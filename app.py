@@ -98,10 +98,12 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash'):
 # --- 4. LÓGICA QUIRÚRGICA DE GUARDADO ---
 def guardar_datos_quirurgico(datos_json, semana):
     try:
+        # Forzar recarga del client si hay problema
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws_name = datos_json.get("destino")
+        
         if ws_name not in HOJAS_VALIDAS:
-            return False, f"Hoja '{ws_name}' no reconocida."
+            return False, f"Hoja '{ws_name}' no reconocida en la lista de permitidas."
             
         ws = sheet.worksheet(ws_name)
         
@@ -116,55 +118,73 @@ def guardar_datos_quirurgico(datos_json, semana):
                 break
         
         if col_index == -1:
-            return False, f"No se encontró la columna para '{semana}' en {ws_name}."
+            return False, f"No se encontró la columna '{semana}' en la hoja {ws_name}."
 
-        # 2. Encontrar las filas
+        # 2. Obtener todas las filas de una vez para comparar
         conceptos_hoja = ws.col_values(1)
         conceptos_limpios = [str(c).strip().upper() for c in conceptos_hoja]
         
         log_cambios = []
+        updates = [] # Para batch update
+        
         for item in datos_json['datos']:
             act_buscada = str(item['actividad']).strip().upper()
             valor = item['valor']
             
-            # Validación numérica
             try:
                 valor_num = float(str(valor).replace(",", "."))
             except:
                 continue
             
             row_index = -1
+            # Búsqueda exacta
             try:
                 row_index = conceptos_limpios.index(act_buscada) + 1
             except ValueError:
-                # Coincidencia difusa simple
+                # Búsqueda difusa
                 for idx, c in enumerate(conceptos_limpios):
                     if act_buscada in c or c in act_buscada:
                         row_index = idx + 1
                         break
             
             if row_index != -1:
-                ws.update_cell(row_index, col_index, valor_num)
+                # Usar formato A1 para batch update: Col1=A, Col2=B, etc.
+                col_letter = chr(64 + col_index) if col_index <= 26 else "AA" # Simplificado para HMI
+                range_name = f"{col_letter}{row_index}"
+                updates.append({'range': range_name, 'values': [[valor_num]]})
+                
                 log_cambios.append({
-                    'ws': ws_name, 'row': row_index, 'col': col_index, 
+                    'ws': ws_name, 'range': range_name, 
                     'act': act_buscada, 'val': valor_num
                 })
         
-        if log_cambios:
+        if updates:
+            # Ejecutar todos los cambios en un solo llamado para evitar error 429
+            ws.batch_update(updates)
             st.session_state['last_update_log'] = log_cambios
-            return True, f"Se actualizaron {len(log_cambios)} conceptos en {ws_name}."
-        return False, "No se encontró ninguna actividad coincidente."
+            return True, f"✅ Éxito: {len(updates)} conceptos guardados en {ws_name}."
+            
+        return False, "⚠️ No se encontraron filas que coincidan con el reporte."
         
     except Exception as e:
-        return False, f"Error: {e}"
+        return False, f"❌ Error crítico de conexión: {str(e)}"
 
 def deshacer_actualizacion():
     if 'last_update_log' in st.session_state:
         try:
             sheet = client.open_by_key(SPREADSHEET_ID)
+            # Agrupar por hoja para eficiencia
+            changes_by_ws = {}
             for change in st.session_state['last_update_log']:
-                ws = sheet.worksheet(change['ws'])
-                ws.update_cell(change['row'], change['col'], "")
+                ws_name = change['ws']
+                if ws_name not in changes_by_ws:
+                    changes_by_ws[ws_name] = []
+                changes_by_ws[ws_name].append({'range': change['range'], 'values': [[""]]})
+            
+            for ws_name, updates in changes_by_ws.items():
+                ws = sheet.worksheet(ws_name)
+                ws.batch_update(updates)
+                
             del st.session_state['last_update_log']
             return True
         except Exception as e:
