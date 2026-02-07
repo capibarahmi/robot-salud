@@ -34,7 +34,7 @@ except Exception as e:
     st.error(f"⚠️ Error de configuración inicial: {e}")
     st.stop()
 
-# --- 2. LISTA DE HOJAS REALES (Basado en Análisis previo) ---
+# --- 2. LISTA DE HOJAS REALES ---
 HOJAS_VALIDAS = [
     "H-PRINCIPAL", "GENERALES", "PNNA", "Hoja 2", "Hoja 1", 
     "PADULTO 19 A 60 AÐOS", "ADULTOS MAYOR", "PSALUD RESPIRATORIA", 
@@ -46,33 +46,45 @@ HOJAS_VALIDAS = [
     "MUSCULOESQUELETICAS", "PREVEN ACCD Y HECHOS VIOLEN ", "ZOONOSIS", "Hoja25"
 ]
 
+def get_worksheet_activities(ws_name):
+    """Obtiene los nombres de las actividades (Columna A) de una hoja."""
+    if not ws_name or ws_name not in HOJAS_VALIDAS:
+        return []
+    try:
+        sheet = client.open_by_key(SPREADSHEET_ID)
+        ws = sheet.worksheet(ws_name)
+        # Obtenemos la columna A, saltando el encabezado (fila 1)
+        activities = ws.col_values(1)[1:] 
+        return [a.strip() for a in activities if a.strip()]
+    except Exception as e:
+        print(f"Error cargando actividades de {ws_name}: {e}")
+        return []
+
 # --- 3. EL CEREBRO IA ---
-def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash'):
+def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None):
     # Selección dinámica de modelo para evitar problemas de cuota
     model = genai.GenerativeModel(model_id)
+    
+    lista_actividades_str = ", ".join(known_activities[:200]) if known_activities else "No disponible"
     
     system_instruction = f"""
     Eres un auditor médico experto. Tu objetivo es mapear reportes físicos hacia una estructura de Excel preexistente.
     
-    REGLA DE ORO: NO PUEDES CAMBIAR LA ESTRUCTURA. Debes extraer nombres de actividades que ya existan en el reporte y asignarles un valor NUMÉRICO.
+    ESTRUCTURA OBJETIVO:
+    Hoja destino: {target_ws if target_ws else 'Detectar automáticamente entre ' + str(HOJAS_VALIDAS)}
+    Lista de Actividades Válidas (FILAS): {lista_actividades_str}
 
-    1. CLASIFICACIÓN: 
-       Escoge el nombre de la hoja destino EXACTO de esta lista: {HOJAS_VALIDAS}.
-       - Si es pediatría/niños, usa 'PNNA'.
-       - Si es adultos mayor, usa 'ADULTOS MAYOR'.
-       - Si es general, usa 'GENERALES' o 'H-PRINCIPAL'.
-       - Guíate por el título del reporte.
+    REGLA DE ORO: 
+    1. SOLO puedes extraer actividades que coincidan con la 'Lista de Actividades Válidas'.
+    2. Si el OCR dice algo parecido pero no exacto, mpea el valor al nombre EXACTO de la lista.
+    3. Si una actividad no está en la lista, IGNÓRALA.
 
-    2. EXTRACCIÓN:
-       - Actividad: Nombre de la fila/concepto reportado.
-       - Valor: El número total (o suma de días) para esa actividad. SOLO NÚMEROS.
-
-    3. RETORNO: Retorna ÚNICAMENTE un JSON:
+    RETORNO: Retorna ÚNICAMENTE un JSON:
     {{
-      "destino": "NOMBRE_EXACTO_DE_LA_HOJA",
+      "destino": "{target_ws if target_ws else 'NOMBRE_EXACTO_DE_LA_HOJA'}",
       "datos": [
-        {{"actividad": "Nombre Actividad", "valor": 10}},
-        {{"actividad": "Vacunas Aplicadas", "valor": 5}}
+        {{"actividad": "Nombre Actividad de la Lista", "valor": 10}},
+        {{"actividad": "Otra Actividad de la Lista", "valor": 5}}
       ]
     }}
     """
@@ -244,6 +256,24 @@ with st.sidebar:
         st.info("💡 Asegúrate que el correo del robot tenga permiso de EDITOR en tu Excel.")
 
     st.markdown("---")
+    st.subheader("⚙️ Configuración de Carga")
+    hoja_manual = st.selectbox(
+        "Hoja Destino (Opcional)",
+        ["AUTO-DETECTAR"] + HOJAS_VALIDAS,
+        help="Si la seleccionas, la IA mapeará los datos EXTACTAMENTE a las filas de esa hoja."
+    )
+    
+    activities_context = []
+    selected_ws = None
+    if hoja_manual != "AUTO-DETECTAR":
+        selected_ws = hoja_manual
+        with st.spinner(f"Cargando filas de {selected_ws}..."):
+            activities_context = get_worksheet_activities(selected_ws)
+            if activities_context:
+                st.caption(f"✅ {len(activities_context)} filas cargadas para mapeo.")
+            else:
+                st.warning("⚠️ No se pudieron cargar las filas.")
+
     semana_sel = st.selectbox("Semana de Carga", ["Semana 1", "Semana 2", "Semana 3", "Semana 4", "Semana 5"])
     
     if 'last_update_log' in st.session_state:
@@ -283,7 +313,12 @@ with col1:
 if img:
     if st.button("🚀 ANALIZAR REPORTE", type="primary"):
         with st.spinner(f"Escaneando con {modelo_sel}..."):
-            res = procesar_imagen(img, model_id=modelo_sel)
+            res = procesar_imagen(
+                img, 
+                model_id=modelo_sel, 
+                target_ws=selected_ws, 
+                known_activities=activities_context
+            )
             if res:
                 st.session_state['current_res'] = res
                 st.success(f"Hoja detectada: {res['destino']}")
