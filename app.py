@@ -175,15 +175,24 @@ def guardar_datos_quirurgico(datos_json, semana):
         conceptos_hoja = ws.col_values(1)
         conceptos_limpios = [str(c).strip().upper() for c in conceptos_hoja]
         
+        import unicodedata
+        def normalize_text(text):
+            if not text: return ""
+            # Eliminar acentos y convertir a mayúsculas
+            text = "".join(c for c in unicodedata.normalize('NFD', str(text)) if unicodedata.category(c) != 'Mn')
+            # Dejar solo letras y números
+            return re.sub(r'[^A-Z0-9]', '', text.upper())
+
+        conceptos_norm = [normalize_text(c) for c in conceptos_hoja]
+        
         log_cambios = []
-        updates = [] # Para batch update
+        updates = [] 
+        errores_mapeo = []
         
         for item in datos_json['datos']:
-            act_raw = str(item['actividad']).strip().upper()
+            act_raw = str(item['actividad']).strip()
             valor = item['valor']
             
-            # Si el item tiene jerarquía (A > B), nos quedamos con la parte B para buscar, 
-            # pero validamos el contexto.
             if " > " in act_raw:
                 partes = act_raw.split(" > ")
                 act_buscada = partes[-1].strip()
@@ -198,48 +207,45 @@ def guardar_datos_quirurgico(datos_json, semana):
                 continue
             
             row_index = -1
-            # Normalización extrema para comparación
-            def normalize(t): return re.sub(r'[^A-Z0-9]', '', str(t).upper())
-            
-            act_norm = normalize(act_buscada)
-            parent_norm = normalize(parent_buscado) if parent_buscado else None
+            act_norm = normalize_text(act_buscada)
+            parent_norm = normalize_text(parent_buscado) if parent_buscado else None
 
-            # Búsqueda con contexto de jerarquía
-            for idx, c in enumerate(conceptos_limpios):
-                c_norm = normalize(c)
-                # Coincidencia exacta o parcial del nombre del item normalizado
+            # 1. Intento de búsqueda con contexto de jerarquía
+            for idx, c_norm in enumerate(conceptos_norm):
                 if act_norm == c_norm or act_norm in c_norm:
-                    # Si hay un padre, verificamos que el padre esté en las filas anteriores
                     if parent_norm:
-                        # Buscamos el padre en las últimas 20 filas hacia arriba
-                        rango_busqueda_padre = [normalize(p) for p in conceptos_limpios[max(0, idx-20):idx]]
-                        if any(parent_norm in p for p in rango_busqueda_padre):
+                        # Buscar el padre en las 25 filas anteriores
+                        rango_padres = conceptos_norm[max(0, idx-25):idx]
+                        if any(parent_norm in p for p in rango_padres):
                             row_index = idx + 1
                             break
                     else:
                         row_index = idx + 1
                         break
             
+            # 2. Fallback: Búsqueda difusa si no se encontró
+            if row_index == -1:
+                for idx, c_norm in enumerate(conceptos_norm):
+                    if act_norm in c_norm or c_norm in act_norm:
+                        row_index = idx + 1
+                        break
+
             if row_index != -1:
-                # Usar formato A1 para batch update
-                col_letter = chr(64 + col_index) if col_index <= 26 else "A" + chr(64 + col_index - 26)
-                range_name = f"{col_letter}{row_index}"
+                from gspread.utils import rowcol_to_a1
+                range_name = rowcol_to_a1(row_index, col_index)
                 updates.append({'range': range_name, 'values': [[valor_num]]})
-                
-                log_cambios.append({
-                    'ws': ws_name, 'range': range_name, 
-                    'act': act_buscada, 'val': valor_num
-                })
+                log_cambios.append({'ws': ws_name, 'range': range_name, 'act': act_buscada, 'val': valor_num})
             else:
-                print(f"DEBUG: No se encontró fila para {act_raw}")
+                errores_mapeo.append(act_raw)
         
         if updates:
-            # Ejecutar todos los cambios en un solo llamado para evitar error 429
             ws.batch_update(updates)
             st.session_state['last_update_log'] = log_cambios
-            return True, f"✅ Éxito: {len(updates)} conceptos guardados en {ws_name}."
+            if errores_mapeo:
+                st.session_state['mapeo_warnings'] = errores_mapeo
+            return True, f"✅ Éxito: {len(updates)} conceptos guardados."
             
-        return False, "⚠️ No se encontraron filas que coincidan con el reporte."
+        return False, "⚠️ No se encontraron filas que coincidan."
         
     except Exception as e:
         return False, f"❌ Error crítico de conexión: {str(e)}"
@@ -396,6 +402,12 @@ if 'current_res' in st.session_state and img:
                 exito, msj = guardar_datos_quirurgico(res, semana_sel)
                 if exito:
                     st.success(msj)
+                    if 'mapeo_warnings' in st.session_state:
+                        with st.expander("⚠️ Algunos ítems no se encontraron"):
+                            for w in st.session_state['mapeo_warnings']:
+                                st.write(f"- {w}")
+                            st.info("Estos ítems fueron ignorados porque no tienen una fila exacta en el Excel.")
+                            del st.session_state['mapeo_warnings']
                     st.balloons()
                     del st.session_state['current_res']
                 else:
@@ -404,6 +416,7 @@ if 'current_res' in st.session_state and img:
     with col_b:
         if st.button("🗑️ BORRAR SELECCIÓN", use_container_width=True):
             del st.session_state['current_res']
+            if 'mapeo_warnings' in st.session_state: del st.session_state['mapeo_warnings']
             st.rerun()
 
 if 'last_update_log' in st.session_state:
