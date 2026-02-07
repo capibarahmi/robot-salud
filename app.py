@@ -100,9 +100,9 @@ def guardar_datos_quirurgico(datos_json, semana):
         # 1. Encontrar la columna de la semana
         headers = ws.row_values(1)
         col_index = -1
-        target_week = semana.upper().replace(" ", "")
+        target_week = re.sub(r'[\s\n\r]', '', semana.upper())
         for i, h in enumerate(headers):
-            h_clean = str(h).upper().replace(" ", "").replace("\N", "")
+            h_clean = re.sub(r'[\s\n\r]', '', str(h).upper())
             if target_week in h_clean:
                 col_index = i + 1
                 break
