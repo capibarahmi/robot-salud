@@ -189,8 +189,14 @@ with st.sidebar:
     st.subheader("🤖 Cerebro AI")
     modelo_sel = st.selectbox(
         "Versión de Gemini",
-        ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"],
-        help="Si uno da error de quota o 404, intenta con otro."
+        [
+            "gemini-3-flash-preview", 
+            "gemini-3-pro-preview", 
+            "gemini-3-pro-image-preview",
+            "gemini-2.0-flash", 
+            "gemini-1.5-flash"
+        ],
+        help="Si uno da error de quota o 404, intenta con otro. Los modelos 'Gemini 3' son los más recientes."
     )
     
     # 2. Diagnóstico de API Key
