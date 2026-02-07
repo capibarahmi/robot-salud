@@ -198,15 +198,22 @@ def guardar_datos_quirurgico(datos_json, semana):
                 continue
             
             row_index = -1
+            # Normalización extrema para comparación
+            def normalize(t): return re.sub(r'[^A-Z0-9]', '', str(t).upper())
+            
+            act_norm = normalize(act_buscada)
+            parent_norm = normalize(parent_buscado) if parent_buscado else None
+
             # Búsqueda con contexto de jerarquía
             for idx, c in enumerate(conceptos_limpios):
-                # Coincidencia exacta o parcial del nombre del item
-                if act_buscada == c or act_buscada in c:
+                c_norm = normalize(c)
+                # Coincidencia exacta o parcial del nombre del item normalizado
+                if act_norm == c_norm or act_norm in c_norm:
                     # Si hay un padre, verificamos que el padre esté en las filas anteriores
-                    if parent_buscado:
-                        # Buscamos el padre en las últimas 15 filas hacia arriba
-                        rango_busqueda_padre = conceptos_limpios[max(0, idx-15):idx]
-                        if any(parent_buscado in p for p in rango_busqueda_padre):
+                    if parent_norm:
+                        # Buscamos el padre en las últimas 20 filas hacia arriba
+                        rango_busqueda_padre = [normalize(p) for p in conceptos_limpios[max(0, idx-20):idx]]
+                        if any(parent_norm in p for p in rango_busqueda_padre):
                             row_index = idx + 1
                             break
                     else:
@@ -214,8 +221,8 @@ def guardar_datos_quirurgico(datos_json, semana):
                         break
             
             if row_index != -1:
-                # Usar formato A1 para batch update: Col1=A, Col2=B, etc.
-                col_letter = chr(64 + col_index) if col_index <= 26 else "AA" # Simplificado para HMI
+                # Usar formato A1 para batch update
+                col_letter = chr(64 + col_index) if col_index <= 26 else "A" + chr(64 + col_index - 26)
                 range_name = f"{col_letter}{row_index}"
                 updates.append({'range': range_name, 'values': [[valor_num]]})
                 
@@ -223,6 +230,8 @@ def guardar_datos_quirurgico(datos_json, semana):
                     'ws': ws_name, 'range': range_name, 
                     'act': act_buscada, 'val': valor_num
                 })
+            else:
+                print(f"DEBUG: No se encontró fila para {act_raw}")
         
         if updates:
             # Ejecutar todos los cambios en un solo llamado para evitar error 429
@@ -380,12 +389,26 @@ if img:
 
 if 'current_res' in st.session_state and img:
     res = st.session_state['current_res']
-    if st.button(f"📤 GUARDAR EN {res['destino']}", type="primary"):
-        with st.spinner("Guardando..."):
-            exito, msj = guardar_datos_quirurgico(res, semana_sel)
-            if exito:
-                st.success(msj)
-                st.balloons()
-                del st.session_state['current_res']
-            else:
-                st.error(msj)
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button(f"📤 GUARDAR EN {res['destino']}", type="primary", use_container_width=True):
+            with st.spinner("Guardando..."):
+                exito, msj = guardar_datos_quirurgico(res, semana_sel)
+                if exito:
+                    st.success(msj)
+                    st.balloons()
+                    del st.session_state['current_res']
+                else:
+                    st.error(msj)
+                    st.info("💡 Intenta seleccionar la hoja manualmente en la izquierda para cargar las filas exactas.")
+    with col_b:
+        if st.button("🗑️ BORRAR SELECCIÓN", use_container_width=True):
+            del st.session_state['current_res']
+            st.rerun()
+
+if 'last_update_log' in st.session_state:
+    st.markdown("---")
+    if st.button("⏪ DESHACER ÚLTIMA CARGA EN SHEETS", type="secondary", use_container_width=True):
+        if deshacer_actualizacion():
+            st.success("✅ Datos borrados de la tabla correctamente.")
+            st.rerun()
