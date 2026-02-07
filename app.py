@@ -34,7 +34,7 @@ except Exception as e:
     st.error(f"⚠️ Error de configuración inicial: {e}")
     st.stop()
 
-# --- 2. LISTA DE HOJAS REALES ---
+# --- 2. LISTA DE HOJAS Y MAPEO DE DEPARTAMENTOS ---
 HOJAS_VALIDAS = [
     "H-PRINCIPAL", "GENERALES", "PNNA", "Hoja 2", "Hoja 1", 
     "PADULTO 19 A 60 AÐOS", "ADULTOS MAYOR", "PSALUD RESPIRATORIA", 
@@ -46,45 +46,77 @@ HOJAS_VALIDAS = [
     "MUSCULOESQUELETICAS", "PREVEN ACCD Y HECHOS VIOLEN ", "ZOONOSIS", "Hoja25"
 ]
 
+DEPT_SYMBOLS = {
+    "PEDIATRIA": "PNNA", "PED": "PNNA", "PEDIAT": "PNNA", "NIÑOS": "PNNA",
+    "ADULTO MAYOR": "ADULTOS MAYOR", "GERIATRIA": "ADULTOS MAYOR",
+    "GENERAL": "GENERALES", "ODONTOLOGIA": "SALUD BUCAL", "ESTOMATITIS": "SALUD BUCAL"
+}
+
 def get_worksheet_activities(ws_name):
-    """Obtiene los nombres de las actividades (Columna A) de una hoja."""
+    """Obtiene los nombres de actividades con jerarquía (Columna A)."""
     if not ws_name or ws_name not in HOJAS_VALIDAS:
         return []
     try:
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws = sheet.worksheet(ws_name)
-        # Obtenemos la columna A, saltando el encabezado (fila 1)
-        activities = ws.col_values(1)[1:] 
-        return [a.strip() for a in activities if a.strip()]
+        rows = ws.col_values(1)[1:] # Saltar header
+        
+        hierarchy_list = []
+        current_group = ""
+        
+        # Heurística de jerarquía: si el nombre es corto y genérico (Niño, Niña, Masculino, Femenino)
+        # o si parece un ítem dependiente, le pegamos el contexto del grupo anterior.
+        items_dependientes = ["NIÑO", "NIÑA", "MASCULINO", "FEMENINO", "FILA", "TOTAL"]
+        
+        for name in rows:
+            name_clean = name.strip()
+            if not name_clean: continue
+            
+            upper_name = name_clean.upper()
+            
+            # Si es un ítem genérico, usa el grupo actual como prefijo
+            if any(x in upper_name for x in items_dependientes) and current_group:
+                hierarchy_list.append(f"{current_group} > {name_clean}")
+            else:
+                current_group = name_clean
+                hierarchy_list.append(name_clean)
+                
+        return hierarchy_list
     except Exception as e:
         print(f"Error cargando actividades de {ws_name}: {e}")
         return []
 
 # --- 3. EL CEREBRO IA ---
 def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None):
-    # Selección dinámica de modelo para evitar problemas de cuota
     model = genai.GenerativeModel(model_id)
     
-    lista_actividades_str = ", ".join(known_activities[:200]) if known_activities else "No disponible"
+    lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:300]]) if known_activities else "No disponible"
     
+    # Inyectamos lógica clínica específica
     system_instruction = f"""
-    Eres un auditor médico experto. Tu objetivo es mapear reportes físicos hacia una estructura de Excel preexistente.
-    
-    ESTRUCTURA OBJETIVO:
-    Hoja destino: {target_ws if target_ws else 'Detectar automáticamente entre ' + str(HOJAS_VALIDAS)}
-    Lista de Actividades Válidas (FILAS): {lista_actividades_str}
+    Eres un auditor médico experto para el Sistema SIM. Extrae datos de reportes físicos y mapéalos a las filas del Excel.
 
-    REGLA DE ORO: 
-    1. SOLO puedes extraer actividades que coincidan con la 'Lista de Actividades Válidas'.
-    2. Si el OCR dice algo parecido pero no exacto, mpea el valor al nombre EXACTO de la lista.
-    3. Si una actividad no está en la lista, IGNÓRALA.
+    EQUIVALENCIAS DE PESTAÑA (HOJA):
+    - Si el reporte es de PEDIATRÍA, NIÑOS o PEDIAT -> Pestaña 'PNNA'
+    - Si el reporte es de ADULTO MAYOR o GERIATRÍA -> Pestaña 'ADULTOS MAYOR'
+    - Si el reporte es GENERAL o ADULTO -> Pestaña 'H-PRINCIPAL' o 'GENERALES'
+    - Otros: {HOJAS_VALIDAS}
 
-    RETORNO: Retorna ÚNICAMENTE un JSON:
+    ESTRUCTURA DE FILAS DISPONIBLES EN {target_ws if target_ws else 'la hoja detectada'}:
+    {lista_actividades_str}
+
+    REGLAS CLÍNICAS OBLIGATORIAS:
+    1. NUTRICIÓN: Si NO se menciona "obeso", "desnutrido" o "bajo peso", suma +1 a "NORMAL" en el grupo Nutrición.
+    2. ENFERMERÍA: Suma +1 a "Consulta por Enfermería" (según edad: Lactante, Escolar, etc.) POR CADA PACIENTE.
+    3. AMBIGÜEDAD: Usa el formato 'Grupo > Ítem' (ej: 'Violencia Física > Niño') si el ítem existe en varios grupos.
+    4. MULTIPLECIDAD: Un reporte puede marcar celdas en varios grupos (Morbilidad, Nutrición, Enfermería).
+
+    RETORNO JSON:
     {{
-      "destino": "{target_ws if target_ws else 'NOMBRE_EXACTO_DE_LA_HOJA'}",
+      "destino": "NOMBRE_EXACTO_DE_LA_PESTAÑA",
       "datos": [
-        {{"actividad": "Nombre Actividad de la Lista", "valor": 10}},
-        {{"actividad": "Otra Actividad de la Lista", "valor": 5}}
+        {{"actividad": "Nombre Exacto o Jerarquía", "valor": 1}},
+        {{"actividad": "Consulta por Enfermería Escolar", "valor": 1}}
       ]
     }}
     """
@@ -140,22 +172,37 @@ def guardar_datos_quirurgico(datos_json, semana):
         updates = [] # Para batch update
         
         for item in datos_json['datos']:
-            act_buscada = str(item['actividad']).strip().upper()
+            act_raw = str(item['actividad']).strip().upper()
             valor = item['valor']
             
+            # Si el item tiene jerarquía (A > B), nos quedamos con la parte B para buscar, 
+            # pero validamos el contexto.
+            if " > " in act_raw:
+                partes = act_raw.split(" > ")
+                act_buscada = partes[-1].strip()
+                parent_buscado = partes[-2].strip()
+            else:
+                act_buscada = act_raw
+                parent_buscado = None
+
             try:
                 valor_num = float(str(valor).replace(",", "."))
             except:
                 continue
             
             row_index = -1
-            # Búsqueda exacta
-            try:
-                row_index = conceptos_limpios.index(act_buscada) + 1
-            except ValueError:
-                # Búsqueda difusa
-                for idx, c in enumerate(conceptos_limpios):
-                    if act_buscada in c or c in act_buscada:
+            # Búsqueda con contexto de jerarquía
+            for idx, c in enumerate(conceptos_limpios):
+                # Coincidencia exacta o parcial del nombre del item
+                if act_buscada == c or act_buscada in c:
+                    # Si hay un padre, verificamos que el padre esté en las filas anteriores
+                    if parent_buscado:
+                        # Buscamos el padre en las últimas 15 filas hacia arriba
+                        rango_busqueda_padre = conceptos_limpios[max(0, idx-15):idx]
+                        if any(parent_buscado in p for p in rango_busqueda_padre):
+                            row_index = idx + 1
+                            break
+                    else:
                         row_index = idx + 1
                         break
             
