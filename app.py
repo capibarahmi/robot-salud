@@ -97,19 +97,19 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
     Eres un auditor médico experto para el Sistema SIM. Extrae datos de reportes físicos y mapéalos a las filas del Excel.
 
     EQUIVALENCIAS DE PESTAÑA (HOJA):
-    - Si el reporte es de PEDIATRÍA, NIÑOS o PEDIAT -> Pestaña 'PNNA'
-    - Si el reporte es de ADULTO MAYOR o GERIATRÍA -> Pestaña 'ADULTOS MAYOR'
-    - Si el reporte es GENERAL o ADULTO -> Pestaña 'H-PRINCIPAL' o 'GENERALES'
-    - Otros: {HOJAS_VALIDAS}
+    - PEDIATRÍA, NIÑOS, PEDIAT -> 'PNNA'
+    - ADULTO MAYOR, GERIATRÍA -> 'ADULTOS MAYOR'
+    - GENERAL, ADULTO -> 'H-PRINCIPAL' o 'GENERALES'
 
     ESTRUCTURA DE FILAS DISPONIBLES EN {target_ws if target_ws else 'la hoja detectada'}:
     {lista_actividades_str}
 
-    REGLAS CLÍNICAS OBLIGATORIAS:
-    1. NUTRICIÓN: Si NO se menciona "obeso", "desnutrido" o "bajo peso", suma +1 a "NORMAL" en el grupo Nutrición.
-    2. ENFERMERÍA: Suma +1 a "Consulta por Enfermería" (según edad: Lactante, Escolar, etc.) POR CADA PACIENTE.
-    3. AMBIGÜEDAD: Usa el formato 'Grupo > Ítem' (ej: 'Violencia Física > Niño') si el ítem existe en varios grupos.
-    4. MULTIPLECIDAD: Un reporte puede marcar celdas en varios grupos (Morbilidad, Nutrición, Enfermería).
+    REGLAS CLÍNICAS OBLIGATORIAS (Súper Crítico):
+    1. CATEGORÍAS EXCLUSIVAS: **PROHIBIDO** marcar filas bajo "Violencia", "Maltrato", "Abuso" o "Riesgo Psicosocial" a menos que el médico mencione EXPLÍCITAMENTE esas palabras. Si el reporte es un control normal, NUNCA uses estas filas.
+    2. NUTRICIÓN: Si NO se menciona "obeso" o "desnutrido", suma +1 a "NORMAL" en el grupo Nutrición.
+    3. ENFERMERÍA: Suma +1 a "Consulta por Enfermería" (según edad: Lactante, Escolar, etc.) POR CADA PACIENTE.
+    4. AMBIGÜEDAD: Usa el formato 'Grupo > Ítem' (ej: 'Morbilidad > Niño' o 'Crecimiento y Desarrollo > Niño').
+    5. MULTIPLECIDAD: Un reporte puede marcar celdas en varios grupos (Morbilidad, Nutrición, Enfermería).
 
     RETORNO JSON:
     {{
