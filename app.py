@@ -127,8 +127,15 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
             {'mime_type': 'image/jpeg', 'data': imagen_bytes}
         ])
         raw_text = response.text.strip()
-        raw_text = re.sub(r'```json\s*|\s*```', '', raw_text)
-        return json.loads(raw_text)
+        # Buscar el bloque JSON entre llaves { }
+        match = re.search(r'({.*})', raw_text, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+            return json.loads(json_str)
+        else:
+            # Si no hay llaves, intentar limpiar markdown como antes
+            clean_text = re.sub(r'```json\s*|\s*```', '', raw_text)
+            return json.loads(clean_text)
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg:
