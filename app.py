@@ -191,13 +191,13 @@ st.info("Modelo activo: Gemini 2.0 Flash (Surgical Mode)")
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    tab1, tab2 = st.tabs(["📸 Cámara", "📂 Archivo"])
+    tab1, tab2 = st.tabs(["📂 Subir Archivo", "📸 Cámara"])
     img = None
     with tab1:
-        f = st.camera_input("Capturar")
+        f = st.file_uploader("Selecciona imagen del reporte", type=['jpg','png','jpeg'])
         if f: img = f.getvalue()
     with tab2:
-        f = st.file_uploader("Subir", type=['jpg','png','jpeg'])
+        f = st.camera_input("Capturar con cámara")
         if f: img = f.getvalue()
 
 if img:
