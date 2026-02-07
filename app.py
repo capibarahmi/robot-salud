@@ -48,8 +48,8 @@ HOJAS_VALIDAS = [
 
 # --- 3. EL CEREBRO IA: GEMINI 2.0 FLASH ---
 def procesar_imagen(imagen_bytes):
-    # Usamos gemini-1.5-flash (cuotas separadas de 2.0)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # gemini-pro-vision soporta imágenes y tiene cuotas separadas
+    model = genai.GenerativeModel('gemini-pro-vision')
     
     system_instruction = f"""
     Eres un auditor médico experto. Tu objetivo es mapear reportes físicos hacia una estructura de Excel preexistente.
@@ -186,7 +186,7 @@ with st.sidebar:
                 st.rerun()
 
 st.title("🦦 Auditoría Médica | SIM")
-st.info("Modelo activo: Gemini 1.5 Flash")
+st.info("Modelo activo: Gemini Pro Vision")
 
 col1, col2 = st.columns([1, 1])
 
