@@ -205,6 +205,24 @@ with st.sidebar:
         masked_key = f"{k[:10]}...{k[-4:]}" if len(k) > 15 else "***"
         st.caption(f"🔑 Key en uso: `{masked_key}`")
     
+    # 3. Diagnóstico de Google Sheets
+    st.markdown("---")
+    st.subheader("📊 Conexión Sheets")
+    try:
+        if client:
+            st.success("✅ Conectado a Google API")
+            if SPREADSHEET_ID:
+                # Intento rápido de abrir el sheet para verificar permisos
+                client.open_by_key(SPREADSHEET_ID)
+                st.success("✅ Sheet ID válido y accesible")
+            else:
+                st.error("❌ Falta SHEET_ID en Secrets")
+        else:
+            st.error("❌ No hay cliente gspread")
+    except Exception as e:
+        st.error(f"❌ Error de conexión: {e}")
+        st.info("💡 Asegúrate que el correo del robot tenga permiso de EDITOR en tu Excel.")
+
     st.markdown("---")
     semana_sel = st.selectbox("Semana de Carga", ["Semana 1", "Semana 2", "Semana 3", "Semana 4", "Semana 5"])
     
