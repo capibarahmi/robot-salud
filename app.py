@@ -46,10 +46,10 @@ HOJAS_VALIDAS = [
     "MUSCULOESQUELETICAS", "PREVEN ACCD Y HECHOS VIOLEN ", "ZOONOSIS", "Hoja25"
 ]
 
-# --- 3. EL CEREBRO IA: GEMINI 2.0 FLASH ---
-def procesar_imagen(imagen_bytes):
-    # Gemini 3 Flash (gemini-2.0-flash en la API)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+# --- 3. EL CEREBRO IA ---
+def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash'):
+    # Selección dinámica de modelo para evitar problemas de cuota
+    model = genai.GenerativeModel(model_id)
     
     system_instruction = f"""
     Eres un auditor médico experto. Tu objetivo es mapear reportes físicos hacia una estructura de Excel preexistente.
@@ -86,7 +86,13 @@ def procesar_imagen(imagen_bytes):
         raw_text = re.sub(r'```json\s*|\s*```', '', raw_text)
         return json.loads(raw_text)
     except Exception as e:
-        st.error(f"Error en Gemini 2.0 Flash: {e}")
+        error_msg = str(e)
+        if "429" in error_msg:
+            st.error("🚨 **Límite de Quota Excedido (Error 429)**")
+            st.warning("Esto sucede porque tu cuenta/proyecto gratuito no tiene más peticiones disponibles hoy.")
+            st.info("💡 **Solución**: Intenta cambiar al modelo **Gemini 1.5 Flash** en la barra lateral, ya que suele tener cuotas independientes.")
+        else:
+            st.error(f"Error en {model_id}: {e}")
         return None
 
 # --- 4. LÓGICA QUIRÚRGICA DE GUARDADO ---
@@ -179,14 +185,20 @@ with st.sidebar:
     st.image("https://img.icons8.com/plasticine/100/capybara.png", width=80)
     st.title("Capibara HMI")
     
-    # Diagnóstico de API Key
+    # 1. Selector de Modelo (Crisis de Quota fix)
+    st.subheader("🤖 Cerebro AI")
+    modelo_sel = st.selectbox(
+        "Versión de Gemini",
+        ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b"],
+        help="Si uno da error de quota, intenta con otro."
+    )
+    
+    # 2. Diagnóstico de API Key
     if "GEMINI_API_KEY" in st.secrets:
         k = st.secrets["GEMINI_API_KEY"]
-        masked_key = f"{k[:6]}...{k[-4:]}" if len(k) > 10 else "***"
-        st.caption(f"🔑 API Key activa: `{masked_key}`")
-    else:
-        st.error("❌ No se detectó GEMINI_API_KEY")
-
+        masked_key = f"{k[:10]}...{k[-4:]}" if len(k) > 15 else "***"
+        st.caption(f"🔑 Key en uso: `{masked_key}`")
+    
     st.markdown("---")
     semana_sel = st.selectbox("Semana de Carga", ["Semana 1", "Semana 2", "Semana 3", "Semana 4", "Semana 5"])
     
@@ -197,17 +209,20 @@ with st.sidebar:
                 st.rerun()
 
     st.markdown("---")
-    with st.expander("ℹ️ ¿Cómo cambiar la Key en la Nube?"):
+    with st.expander("🚨 ¿Sigue el error de Quota?"):
         st.write("""
-        1. Ve a tu Dashboard de **Streamlit Cloud**.
-        2. Clic en los tres puntos `...` de tu App -> **Settings**.
-        3. Ve a **Secrets**.
-        4. Actualiza `GEMINI_API_KEY` allí.
-        5. Clic en **Save** (la app se reiniciará sola).
+        Si cambiaste de cuenta y sigue el error, es porque creaste la clave en el **mismo proyecto**.
+        
+        **Pasos para el Reset Real:**
+        1. Ve a [Google AI Studio](https://aistudio.google.com/).
+        2. Arriba a la izquierda, clic en el nombre del Proyecto -> **Create new project**.
+        3. Ponle un nombre nuevo (ej: 'Robot SIM 2').
+        4. Clic en **Get API Key** -> Selecciona el nuevo proyecto.
+        5. Copia esa clave y pégala en los **Secrets** de Streamlit.
         """)
 
 st.title("🦦 Auditoría Médica | SIM")
-st.info("Modelo activo: Gemini 3 Flash")
+st.info(f"Modelo activo: **{modelo_sel}**")
 
 col1, col2 = st.columns([1, 1])
 
@@ -223,8 +238,8 @@ with col1:
 
 if img:
     if st.button("🚀 ANALIZAR REPORTE", type="primary"):
-        with st.spinner("Escaneando..."):
-            res = procesar_imagen(img)
+        with st.spinner(f"Escaneando con {modelo_sel}..."):
+            res = procesar_imagen(img, model_id=modelo_sel)
             if res:
                 st.session_state['current_res'] = res
                 st.success(f"Hoja detectada: {res['destino']}")
