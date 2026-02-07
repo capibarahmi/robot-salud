@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials # Cambio a librería moderna
 import pandas as pd
 import json
 import time
@@ -12,14 +12,27 @@ import re
 def get_gspread_client():
     try:
         creds_dict = dict(st.secrets["GOOGLE_CREDENTIALS"])
+        
+        # Limpieza Quirúrgica de Llave Privada
         if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            pk = creds_dict["private_key"]
+            # Paso 1: Arreglar escapes de saltos de línea
+            pk = pk.replace("\\n", "\n")
+            # Paso 2: Limpieza profunda de espacios accidentales (ASN.1 failure fix)
+            # Solo mantenemos las cabeceras y decodificamos el bloque base64 sin espacios intermedios
+            header = "-----BEGIN PRIVATE KEY-----"
+            footer = "-----END PRIVATE KEY-----"
+            if header in pk and footer in pk:
+                parts = pk.split(header)[1].split(footer)
+                key_body = parts[0].replace(" ", "").replace("\n", "").replace("\r", "")
+                pk = f"{header}\n{key_body}\n{footer}"
+            creds_dict["private_key"] = pk
         
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
         return gspread.authorize(creds)
     except Exception as e:
-        st.error(f"❌ Error de Autenticación: {e}")
+        st.error(f"❌ Error de Autenticación Crítico: {e}")
         st.stop()
 
 # Configuración inicial
