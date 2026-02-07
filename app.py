@@ -178,12 +178,33 @@ st.markdown("""
 with st.sidebar:
     st.image("https://img.icons8.com/plasticine/100/capybara.png", width=80)
     st.title("Capibara HMI")
+    
+    # Diagnóstico de API Key
+    if "GEMINI_API_KEY" in st.secrets:
+        k = st.secrets["GEMINI_API_KEY"]
+        masked_key = f"{k[:6]}...{k[-4:]}" if len(k) > 10 else "***"
+        st.caption(f"🔑 API Key activa: `{masked_key}`")
+    else:
+        st.error("❌ No se detectó GEMINI_API_KEY")
+
+    st.markdown("---")
     semana_sel = st.selectbox("Semana de Carga", ["Semana 1", "Semana 2", "Semana 3", "Semana 4", "Semana 5"])
+    
     if 'last_update_log' in st.session_state:
         if st.button("⏪ DESHACER CARGA"):
             if deshacer_actualizacion():
                 st.success("Revertido.")
                 st.rerun()
+
+    st.markdown("---")
+    with st.expander("ℹ️ ¿Cómo cambiar la Key en la Nube?"):
+        st.write("""
+        1. Ve a tu Dashboard de **Streamlit Cloud**.
+        2. Clic en los tres puntos `...` de tu App -> **Settings**.
+        3. Ve a **Secrets**.
+        4. Actualiza `GEMINI_API_KEY` allí.
+        5. Clic en **Save** (la app se reiniciará sola).
+        """)
 
 st.title("🦦 Auditoría Médica | SIM")
 st.info("Modelo activo: Gemini 3 Flash")
