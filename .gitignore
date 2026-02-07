@@ -1,0 +1,11 @@
+*.json
+.streamlit/
+__pycache__/
+*.pyc
+*.txt
+!requirements.txt
+.env
+.DS_Store
+node_modules/
+dist/
+build/
