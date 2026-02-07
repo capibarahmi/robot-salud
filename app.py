@@ -105,11 +105,24 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
     {lista_actividades_str}
 
     REGLAS CLÍNICAS OBLIGATORIAS (Súper Crítico):
-    1. CATEGORÍAS EXCLUSIVAS: **PROHIBIDO** marcar filas bajo "Violencia", "Maltrato", "Abuso" o "Riesgo Psicosocial" a menos que el médico mencione EXPLÍCITAMENTE esas palabras. Si el reporte es un control normal, NUNCA uses estas filas.
-    2. NUTRICIÓN: Si NO se menciona "obeso" o "desnutrido", suma +1 a "NORMAL" en el grupo Nutrición.
-    3. ENFERMERÍA: Suma +1 a "Consulta por Enfermería" (según edad: Lactante, Escolar, etc.) POR CADA PACIENTE.
-    4. AMBIGÜEDAD: Usa el formato 'Grupo > Ítem' (ej: 'Morbilidad > Niño' o 'Crecimiento y Desarrollo > Niño').
-    5. MULTIPLECIDAD: Un reporte puede marcar celdas en varios grupos (Morbilidad, Nutrición, Enfermería).
+    1. GRUPOS DE EDAD (Manual de Usuario):
+       - "Lactante" (< 2 años): Usa filas bajo "Total de Consultas < 23 Meses".
+       - "Pre-escolar" (2 a 6 años): Usa filas bajo "Total de Consultas de 2 a 6 Años".
+    
+    2. GÉNERO (Filas Generales al inicio):
+       - Masc -> Suma +1 a "Masculino Lactantes y Pre-escolares"
+       - Fem -> Suma +1 a "Femenino Lactantes y Pre-escolares"
+    
+    3. ENFERMERÍA (Filas Específicas):
+       - Si es Lactante -> Suma +1 a "E. Lactantes Atendidos por Enfermería".
+       - Si es Pre-escolar -> Suma +1 a "E. Preescolares Atendidos por Enfermería".
+       - (NO uses ninguna otra fila genérica de enfermería).
+
+    4. NUTRICIÓN: Si NO se menciona "obeso" o "desnutrido", suma +1 a "NORMAL" en el grupo Nutrición.
+    
+    5. PROHIBICIONES: 
+       - NO asumas "Violencia" ni "Riesgo" si no está escrito explícitamente.
+       - NO confundas "Referencias" con "Enfermería".
 
     RETORNO JSON:
     {{
