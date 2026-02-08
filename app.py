@@ -25,10 +25,22 @@ def get_gspread_client():
         st.error(f"❌ Error de Autenticación: {e}")
         st.stop()
 
-# Configuración inicial
+# Configuración inicial de las llaves
+if 'api_key_pool' not in st.session_state:
+    st.session_state['api_key_pool'] = [st.secrets.get("GEMINI_API_KEY")] if "GEMINI_API_KEY" in st.secrets else []
+if 'current_key_index' not in st.session_state:
+    st.session_state['current_key_index'] = 0
+
+def configure_genai():
+    if st.session_state['api_key_pool']:
+        idx = st.session_state['current_key_index'] % len(st.session_state['api_key_pool'])
+        key = st.session_state['api_key_pool'][idx]
+        genai.configure(api_key=key)
+        return True
+    return False
+
 try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
+    configure_genai()
     client = get_gspread_client()
     SPREADSHEET_ID = st.secrets.get("SHEET_ID")
 except Exception as e:
@@ -68,9 +80,9 @@ def get_worksheet_activities(ws_name):
         current_group = ""   # Nivel 2: Sub-bloque (Riesgo, Diagnóstico, etc.)
         
         # Palabras que suelen definir una SECCIÓN PRINCIPAL
-        keywords_seccion = ["atención", "programa de", "total de consultas"]
+        keywords_seccion = ["atención", "programa de", "total de consultas", "lactante", "escolar", "adolescente"]
         # Palabras que suelen definir un SUB-GRUPO
-        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo"]
+        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
         # Items que SIEMPRE son hojas (leafs)
         items_leafs = ["MASCULINO", "FEMENINO", "NIÑO", "NIÑA", "TOTAL", "SÍ", "NO", "S/D"]
 
@@ -150,10 +162,17 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
             return json.loads(clean_text)
     except Exception as e:
         error_msg = str(e)
+        if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
+            st.warning("🔄 **Límite de cuota alcanzado. Rotando API Key automáticamente...**")
+            st.session_state['current_key_index'] += 1
+            configure_genai()
+            # Reintentar una vez con la nueva llave
+            return procesar_imagen(imagen_bytes, model_id, target_ws, known_activities, skill_name)
+        
         if "429" in error_msg:
             st.error("🚨 **Límite de Quota Excedido (Error 429)**")
             st.warning("Esto significa que has usado todas las peticiones gratuitas permitidas para este modelo por ahora (suele ser un límite diario o de mensajes por minuto).")
-            st.info("💡 **Solución**: Cambia el modelo en la barra lateral a uno diferente (ej: de Flash a Pro o viceversa).")
+            st.info("💡 **Solución**: Agrega una API Key adicional en la barra lateral o cambia el modelo.")
         else:
             st.error(f"Error en {model_id}: {e}")
         return None
@@ -200,8 +219,8 @@ def guardar_datos_quirurgico(datos_json, semana):
         rutas_excel = []
         c_sec = ""
         c_grp = ""
-        keywords_seccion = ["atención", "programa de", "total de consultas"]
-        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo"]
+        keywords_seccion = ["atención", "programa de", "total de consultas", "lactante", "escolar", "adolescente"]
+        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
         items_leafs = ["MASCULINO", "FEMENINO", "NIÑO", "NIÑA", "TOTAL", "SÍ", "NO", "S/D"]
 
         for idx, val in enumerate(conceptos_hoja):
@@ -267,11 +286,18 @@ def guardar_datos_quirurgico(datos_json, semana):
                     row_index = idx + 1
                     break
             
-            # 2. Fallback: Búsqueda difusa del ítem final si falló la ruta (menos seguro)
+            # 2. Fallback: Búsqueda difusa del ítem final pero PROTEGIDA por sección
             if row_index == -1:
                 item_norm = normalize_path(partes[-1])
+                seccion_norm = normalize_path(partes[0]) if partes else ""
+                
                 for idx, r_norm in enumerate(rutas_norm):
-                    if item_norm in r_norm:
+                    # Solo consideramos el fallback si la sección coincide (si se proveyó una)
+                    if seccion_norm:
+                        if item_norm in r_norm and seccion_norm in r_norm:
+                            row_index = idx + 1
+                            break
+                    elif item_norm in r_norm: # Fallback general si no hay sección
                         row_index = idx + 1
                         break
 
@@ -344,10 +370,17 @@ def aplicar_correccion(user_input, current_data, model_id='gemini-2.0-flash'):
         return json.loads(re.sub(r'```json\s*|\s*```', '', raw_text))
     except Exception as e:
         error_msg = str(e)
+        if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
+            st.warning("🔄 **Cuota agotada en chat. Rotando llave...**")
+            st.session_state['current_key_index'] += 1
+            configure_genai()
+            # Reintentar una vez con la nueva llave
+            return aplicar_correccion(user_input, current_data, model_id)
+            
         if "429" in error_msg:
             st.error("🚨 **Límite de Quota Excedido en el Chat (Error 429)**")
             st.warning("Has alcanzado el límite de mensajes gratuitos para este modelo hoy.")
-            st.info("💡 **Solución**: Cambia a **Gemini 2.0 Flash** o **Gemini 1.5 Flash** en la barra lateral izquierda. Cada modelo tiene su propia cuota separada.")
+            st.info("💡 **Solución**: Agrega otra API Key en el panel lateral o cambia el modelo.")
         else:
             st.error(f"Error en el asistente de corrección: {e}")
         return None
@@ -389,11 +422,34 @@ with st.sidebar:
         help="EPI: Reporte individual de paciente. CUADERNOS: Sumatoria de diario de consulta."
     )
     
-    # 2. Diagnóstico de API Key
-    if "GEMINI_API_KEY" in st.secrets:
-        k = st.secrets["GEMINI_API_KEY"]
-        masked_key = f"{k[:10]}...{k[-4:]}" if len(k) > 15 else "***"
-        st.caption(f"🔑 Key en uso: `{masked_key}`")
+    # 2. Gestión de API Keys (Pool de llaves)
+    st.markdown("---")
+    st.subheader("🔑 Mis API Keys")
+    
+    with st.expander("Gestionar llaves (Rotación)", expanded=False):
+        nueva_key = st.text_input("Agregar nueva API Key:", type="password")
+        if st.button("➕ Agregar a la lista"):
+            if nueva_key and nueva_key not in st.session_state['api_key_pool']:
+                st.session_state['api_key_pool'].append(nueva_key)
+                st.success("Llave agregada correctamente.")
+            elif nueva_key in st.session_state['api_key_pool']:
+                st.warning("Esta llave ya está en la lista.")
+        
+        st.write(f"Total de llaves: **{len(st.session_state['api_key_pool'])}**")
+        if st.button("🗑️ Limpiar todas las llaves"):
+            st.session_state['api_key_pool'] = []
+            if "GEMINI_API_KEY" in st.secrets:
+                st.session_state['api_key_pool'].append(st.secrets["GEMINI_API_KEY"])
+            st.rerun()
+
+    # Mostrar diagnóstico de la key activa actual
+    if st.session_state['api_key_pool']:
+        idx_activa = st.session_state['current_key_index'] % len(st.session_state['api_key_pool'])
+        k_activa = st.session_state['api_key_pool'][idx_activa]
+        masked = f"{k_activa[:6]}...{k_activa[-4:]}" if len(k_activa) > 10 else "***"
+        st.info(f"🟢 **Activa**: Key #{idx_activa + 1} (`{masked}`)")
+    else:
+        st.error("⚠️ No hay API Keys configuradas.")
     
     # 3. Diagnóstico de Google Sheets
     st.markdown("---")
