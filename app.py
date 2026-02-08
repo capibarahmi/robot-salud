@@ -6,6 +6,7 @@ import pandas as pd
 import json
 import time
 import re
+from skills import AI_SKILLS
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
 @st.cache_resource
@@ -87,51 +88,23 @@ def get_worksheet_activities(ws_name):
         return []
 
 # --- 3. EL CEREBRO IA ---
-def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None):
+def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="EPI (Individual)"):
     model = genai.GenerativeModel(model_id)
     
     lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:300]]) if known_activities else "No disponible"
     
-    # Inyectamos lógica clínica específica
+    # Seleccionar la instrucción según el skill
+    base_instruction = AI_SKILLS.get(skill_name, AI_SKILLS["EPI (Individual)"])
+    
     system_instruction = f"""
-    Eres un auditor médico experto para el Sistema SIM. Extrae datos de reportes físicos y mapéalos a las filas del Excel.
-
-    EQUIVALENCIAS DE PESTAÑA (HOJA):
-    - PEDIATRÍA, NIÑOS, PEDIAT -> 'PNNA'
-    - ADULTO MAYOR, GERIATRÍA -> 'ADULTOS MAYOR'
-    - GENERAL, ADULTO -> 'H-PRINCIPAL' o 'GENERALES'
-
+    {base_instruction}
+    
     ESTRUCTURA DE FILAS DISPONIBLES EN {target_ws if target_ws else 'la hoja detectada'}:
     {lista_actividades_str}
-
-    REGLAS CLÍNICAS OBLIGATORIAS (Súper Crítico):
-    1. GRUPOS DE EDAD (Manual de Usuario):
-       - "Lactante" (< 2 años): Usa filas bajo "Total de Consultas < 23 Meses".
-       - "Pre-escolar" (2 a 6 años): Usa filas bajo "Total de Consultas de 2 a 6 Años".
     
-    2. GÉNERO (Filas Generales al inicio):
-       - Masc -> Suma +1 a "Masculino Lactantes y Pre-escolares"
-       - Fem -> Suma +1 a "Femenino Lactantes y Pre-escolares"
-    
-    3. ENFERMERÍA (Filas Específicas):
-       - Si es Lactante -> Suma +1 a "E. Lactantes Atendidos por Enfermería".
-       - Si es Pre-escolar -> Suma +1 a "E. Preescolares Atendidos por Enfermería".
-       - (NO uses ninguna otra fila genérica de enfermería).
-
-    4. NUTRICIÓN: Si NO se menciona "obeso" o "desnutrido", suma +1 a "NORMAL" en el grupo Nutrición.
-    
-    5. PROHIBICIONES: 
-       - NO asumas "Violencia" ni "Riesgo" si no está escrito explícitamente.
-       - NO confundas "Referencias" con "Enfermería".
-
-    RETORNO JSON:
-    {{
-      "destino": "NOMBRE_EXACTO_DE_LA_PESTAÑA",
-      "datos": [
-        {{"actividad": "Nombre Exacto o Jerarquía", "valor": 1}},
-        {{"actividad": "Consulta por Enfermería Escolar", "valor": 1}}
-      ]
-    }}
+    CONTEXTO ACTUAL:
+    - Hoja Sugerida: {target_ws if target_ws else 'Auto-detectar'}
+    - Sistema: {skill_name}
     """
 
     try:
@@ -285,7 +258,36 @@ def deshacer_actualizacion():
             st.error(f"Error al deshacer: {e}")
     return False
 
-# --- 5. INTERFAZ ---
+# --- 6. GESTIÓN DE CÁMARA Y CHAT (ESTADO) ---
+if 'cam_active' not in st.session_state:
+    st.session_state.cam_active = False
+if 'captured_img' not in st.session_state:
+    st.session_state.captured_img = None
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+
+# --- 7. CORRECCIONES POR CHAT ---
+def aplicar_correccion(user_input, current_data, model_id='gemini-2.0-flash'):
+    from skills import CHAT_CORRECTION_SKILL
+    model = genai.GenerativeModel(model_id)
+    
+    prompt = CHAT_CORRECTION_SKILL.format(
+        current_data=json.dumps(current_data, indent=2),
+        user_input=user_input
+    )
+    
+    try:
+        response = model.generate_content(prompt)
+        raw_text = response.text.strip()
+        match = re.search(r'({.*})', raw_text, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        return json.loads(re.sub(r'```json\s*|\s*```', '', raw_text))
+    except Exception as e:
+        st.error(f"Error en corrección: {e}")
+        return None
+
+# --- 8. INTERFAZ ---
 st.set_page_config(page_title="Capibara HMI | SIM", page_icon="🦦", layout="wide")
 
 st.markdown("""
@@ -304,13 +306,21 @@ with st.sidebar:
     modelo_sel = st.selectbox(
         "Versión de Gemini",
         [
+            "gemini-2.0-flash", 
+            "gemini-1.5-flash",
             "gemini-3-flash-preview", 
             "gemini-3-pro-preview", 
             "gemini-3-pro-image-preview",
-            "gemini-2.0-flash", 
-            "gemini-1.5-flash"
         ],
         help="Si uno da error de quota o 404, intenta con otro. Los modelos 'Gemini 3' son los más recientes."
+    )
+    
+    st.markdown("---")
+    st.subheader("💡 Sistema de Origen")
+    skill_sel = st.radio(
+        "Tipo de Reporte (Skill)",
+        list(AI_SKILLS.keys()),
+        help="EPI: Reporte individual de paciente. CUADERNOS: Sumatoria de diario de consulta."
     )
     
     # 2. Diagnóstico de API Key
@@ -385,12 +395,32 @@ col1, col2 = st.columns([1, 1])
 with col1:
     tab1, tab2 = st.tabs(["📂 Subir Archivo", "📸 Cámara"])
     img = None
+    
     with tab1:
-        f = st.file_uploader("Selecciona imagen del reporte", type=['jpg','png','jpeg'])
-        if f: img = f.getvalue()
+        f_up = st.file_uploader("Selecciona imagen del reporte", type=['jpg','png','jpeg'])
+        if f_up: 
+            img = f_up.getvalue()
+            st.session_state.captured_img = None # Limpiar captura de cámara si se sube archivo
+            
     with tab2:
-        f = st.camera_input("Capturar con cámara")
-        if f: img = f.getvalue()
+        if not st.session_state.cam_active:
+            if st.button("📷 ACTIVAR CÁMARA", use_container_width=True):
+                st.session_state.cam_active = True
+                st.rerun()
+        else:
+            f_cam = st.camera_input("Capturar con cámara")
+            if f_cam:
+                st.session_state.captured_img = f_cam.getvalue()
+                st.session_state.cam_active = False # Apagar cámara tras captura
+                st.rerun()
+            
+            if st.button("🚫 DESACTIVAR CÁMARA", use_container_width=True):
+                st.session_state.cam_active = False
+                st.rerun()
+        
+    # Priorizar la imagen capturada si existe, de lo contrario la subida
+    if st.session_state.captured_img:
+        img = st.session_state.captured_img
 
 if img:
     if st.button("🚀 ANALIZAR REPORTE", type="primary"):
@@ -399,7 +429,8 @@ if img:
                 img, 
                 model_id=modelo_sel, 
                 target_ws=selected_ws, 
-                known_activities=activities_context
+                known_activities=activities_context,
+                skill_name=skill_sel
             )
             if res:
                 st.session_state['current_res'] = res
@@ -423,14 +454,48 @@ if 'current_res' in st.session_state and img:
                             del st.session_state['mapeo_warnings']
                     st.balloons()
                     del st.session_state['current_res']
+                    st.session_state.captured_img = None # Limpiar tras guardado exitoso
                 else:
                     st.error(msj)
                     st.info("💡 Intenta seleccionar la hoja manualmente en la izquierda para cargar las filas exactas.")
     with col_b:
         if st.button("🗑️ BORRAR SELECCIÓN", use_container_width=True):
-            del st.session_state['current_res']
+            if 'current_res' in st.session_state: del st.session_state['current_res']
             if 'mapeo_warnings' in st.session_state: del st.session_state['mapeo_warnings']
+            st.session_state.captured_img = None # Limpiar imagen capturada
+            st.session_state.chat_history = [] # Limpiar chat
             st.rerun()
+
+# --- PANEL DE CHAT PARA CORRECCIONES ---
+if 'current_res' in st.session_state and img:
+    st.markdown("---")
+    st.subheader("💬 Asistente de Correcciones")
+    
+    # Contenedor de mensajes
+    chat_container = st.container(height=300)
+    with chat_container:
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+    # Input de chat
+    if prompt := st.chat_input("Ej: 'Cambia Femenino a 5' o 'Mueve a la hoja GENERALES'"):
+        # Mostrar mensaje del usuario
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with chat_container:
+            with st.chat_message("user"):
+                st.markdown(prompt)
+        
+        # Procesar con IA
+        with st.spinner("Aplicando cambios..."):
+            nuevo_res = aplicar_correccion(prompt, st.session_state['current_res'], model_id=modelo_sel)
+            if nuevo_res:
+                st.session_state['current_res'] = nuevo_res
+                msj_ia = "✅ He aplicado los cambios a la tabla superior."
+                st.session_state.chat_history.append({"role": "assistant", "content": msj_ia})
+                st.rerun()
+            else:
+                st.error("No pude procesar esa corrección.")
 
 if 'last_update_log' in st.session_state:
     st.markdown("---")
