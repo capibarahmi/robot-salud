@@ -561,13 +561,33 @@ if img:
 if 'current_res' in st.session_state:
     res = st.session_state['current_res']
     st.success(f"📍 Hoja detectada: **{res['destino']}**")
-    st.dataframe(pd.DataFrame(res['datos']), use_container_width=True)
+    
+    # Crear un DataFrame para edición
+    df_editor = pd.DataFrame(res['datos'])
+    
+    # Mostrar editor interactivo
+    edited_df = st.data_editor(
+        df_editor, 
+        use_container_width=True, 
+        num_rows="dynamic",
+        column_config={
+            "actividad": st.column_config.TextColumn("Coordenada (Sección > Grupo > Item)", width="large"),
+            "valor": st.column_config.NumberColumn("Valor", min_value=0, format="%d")
+        }
+    )
+    
+    # Sincronizar cambios de vuelta al session_state
+    if not edited_df.equals(df_editor):
+        st.session_state['current_res']['datos'] = edited_df.to_dict('records')
+        # No hacemos rerun aquí para evitar loops, el botón de Guardar usará la data fresca
     
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button(f"📤 GUARDAR EN {res['destino']}", type="primary", use_container_width=True):
             with st.spinner("Guardando..."):
-                exito, msj = guardar_datos_quirurgico(res, semana_sel)
+                # Asegurarse de usar los datos editados
+                res_to_save = st.session_state['current_res']
+                exito, msj = guardar_datos_quirurgico(res_to_save, semana_sel)
                 if exito:
                     st.success(msj)
                     if 'mapeo_warnings' in st.session_state:
