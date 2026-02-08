@@ -434,11 +434,13 @@ if img:
             )
             if res:
                 st.session_state['current_res'] = res
-                st.success(f"Hoja detectada: {res['destino']}")
-                st.dataframe(pd.DataFrame(res['datos']), use_container_width=True)
+                st.rerun() # Recargar para mostrar tabla persistente
 
 if 'current_res' in st.session_state and img:
     res = st.session_state['current_res']
+    st.success(f"📍 Hoja detectada: **{res['destino']}**")
+    st.dataframe(pd.DataFrame(res['datos']), use_container_width=True)
+    
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button(f"📤 GUARDAR EN {res['destino']}", type="primary", use_container_width=True):
