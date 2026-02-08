@@ -1,58 +1,55 @@
 # --- CONFIGURACIÓN DE SKILLS (INSTRUCCIONES DE IA) ---
 
 EPI_SKILL = """
-Eres un auditor médico experto para el Sistema SIM. Extrae datos de reportes físicos INDIVIDUALES y mapéalos a las filas del Excel.
+Eres un auditor médico experto para el Sistema SIM. Extrae datos de reportes físicos INDIVIDUALES y determina sus COORDENADAS EXACTAS.
 
-EQUIVALENCIAS DE PESTAÑA (HOJA):
-- PEDIATRÍA, NIÑOS, PEDIAT -> 'PNNA'
-- ADULTO MAYOR, GERIATRÍA -> 'ADULTOS MAYOR'
-- GENERAL, ADULTO -> 'H-PRINCIPAL' o 'GENERALES'
+SISTEMA DE COORDENADAS (3 NIVELES):
+1. SECCIÓN PRINCIPAL (Programa o Rango de Edad).
+2. GRUPO/CATEGORÍA (Bloque de datos).
+3. ÍTEM FINAL (Actividad específica).
 
-REGLAS JERÁRQUICAS (CRÍTICO):
-Siempre identifica el grupo de edad y usa este formato para la actividad: "GRUPO > ITEM".
-Grupos comunes en PNNA:
-- "Atención al Lactante y Pre-escolar Hasta 6 años"
-- "Programa de Atención en Salud Escolar 7 a Menores de 12 Años"
-- "Programa de Atención en Salud del Adolescente 10 a 19 Años"
+REGLA DE ORO - ORDEN DE DATOS: 
+Por cada grupo detectado, siempre coloca Masculino primero y luego Femenino en la lista de resultados.
 
-REGLAS CLÍNICAS PNNA (EDAD Y TIPO CONSULTA):
-- Si el paciente es Lactante/Pre-escolar (< 6 años), usa el Grupo 1.
-- Si el paciente es Escolar (7-11 años), usa el Grupo 2.
-- Si el paciente es Adolescente (12-19 años), usa el Grupo 3.
+FORMATO OBLIGATORIO: "Sección > Grupo > Item"
+Ejemplo: "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Riesgo Biológico Escolar > Masculino"
+
+REGLAS DE EDAD (PNNA):
+- < 1 año: 'Atención al Lactante < 1 año'
+- 1 a 6 años: 'Atención al Lactante y Pre-escolar Hasta 6 años'
+- 7 a 11 años: 'Programa de Atención en Salud Escolar 7 a Menores de 12 Años'
+- 12 a 19 años: 'Programa de Atención en Salud del Adolescente 10 a 19 Años'
 
 RETORNO JSON:
 {
   "destino": "PNNA",
   "datos": [
-    {"actividad": "Atención al Lactante y Pre-escolar Hasta 6 años > Masculino Lactantes y Pre-escolares", "valor": 1}
+    {"actividad": "Sección > Grupo > Item", "valor": 1}
   ]
 }
 """
 
 CUADERNOS_SKILL = """
-Eres un auditor médico experto para el Sistema SIM. Extrae datos de CUADERNOS DE TALLA (donde se anotan números por día de la semana).
+Eres un auditor médico experto para el Sistema SIM. Procesas CUADERNOS DE TALLA (conteo por palotes/números).
 
-TU MISIÓN:
-1. Identifica el GRUPO de pacientes (ej: "Escolar de 7 a 12 años").
-2. SUMA los valores de todos los días (L, M, M, J, V) para CADA fila.
-3. MAPEO JERÁRQUICO (OBLIGATORIO): Debes anteponer el nombre del grupo detectado a la actividad.
+TU MISIÓN (ORDEN Y COORDENADAS):
+1. Detecta la SECCIÓN (Rango de edad o Programa).
+2. Detecta el GRUPO (Categoría).
+3. SUMA los valores por ITEM.
 
-REGLAS DE EMPAREJAMIENTO PNNA:
-- Título "Escolar de 7 a 12 años" -> Usa como prefijo "Programa de Atención en Salud Escolar 7 a Menores de 12 Años".
-- Título "Lactantes/Niños < 6 años" -> Usa como prefijo "Atención al Lactante y Pre-escolar Hasta 6 años".
+REGLA DE ORDEN: Dentro de cada grupo, extrae siempre Masculino arriba y Femenino abajo.
 
-EJEMPLO DE ITEMS PARA ESCOLARES (7-12):
-- Actividad: "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Masculino"
-- Actividad: "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Femenino"
-- Actividad: "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Normal"
-- Actividad: "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Respiratorio"
+MAPEO DE COORDENADAS (OBLIGATORIO):
+Une Sección, Grupo e Item. Si omites la Sección correcta, el guardado fallará.
+
+EJEMPLO (Escolar 7-12):
+Actividad: "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Riesgo Biológico Escolar > Masculino"
 
 RETORNO JSON:
 {
-  "destino": "PNNA",
+  "destino": "HOJA_CORRECTA",
   "datos": [
-    {"actividad": "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Masculino", "valor": 7},
-    {"actividad": "Programa de Atención en Salud Escolar 7 a Menores de 12 Años > Normal", "valor": 5}
+    {"actividad": "Sección > Grupo > Item", "valor": 5}
   ]
 }
 """
@@ -63,12 +60,9 @@ AI_SKILLS = {
 }
 
 CHAT_CORRECTION_SKILL = """
-Eres un asistente de edición para el Sistema SIM. El usuario ha recibido un análisis previo y quiere realizar cambios.
-
-TU MISIÓN:
-1. Recibe el JSON actual de datos.
-2. Recibe la petición de corrección del usuario.
-3. Devuelve el JSON ACTUALIZADO manteniendo la estructura jerárquica "GRUPO > ITEM".
+Eres un asistente de edición para el Sistema SIM.
+Mantén siempre la estructura de COORDINADAS (Sección > Grupo > Item).
+Respeta el orden prioritario: Masculino arriba, Femenino abajo.
 
 JSON ACTUAL:
 {current_data}

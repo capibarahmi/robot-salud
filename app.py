@@ -37,20 +37,22 @@ except Exception as e:
 
 # --- 2. LISTA DE HOJAS Y MAPEO DE DEPARTAMENTOS ---
 HOJAS_VALIDAS = [
-    "H-PRINCIPAL", "GENERALES", "PNNA", "Hoja 2", "Hoja 1", 
-    "PADULTO 19 A 60 AÐOS", "ADULTOS MAYOR", "PSALUD RESPIRATORIA", 
+    "PNNA", "PADULTO 19 A 60 AÐOS", "ADULTOS MAYOR", "PSALUD RESPIRATORIA", 
     "ITS-HIV-SIDA", "SANGRE SEGURA", "PREVENCION CANCER CUELLO UTERIN", 
     "PROMOCIËN DE SALUD", "ENDOCRINO-METABOLICO", "CARDIOVASCULAR", 
     "HEREDOMETABËLICAS", "SALUD BUCAL", "SALUD MENTAL", "SSR", 
     "VISITAS Y ABORDAJES", "SALUD RENAL", "NUTRICIËN", 
-    "PREVEN ACCD Y HECHOS VIOLENTOS", "DERMATOLOG═A SANITARIA", "Hoja1", 
-    "MUSCULOESQUELETICAS", "PREVEN ACCD Y HECHOS VIOLEN ", "ZOONOSIS", "Hoja25"
+    "PREVEN ACCD Y HECHOS VIOLENTOS", "DERMATOLOG═A SANITARIA", 
+    "MUSCULOESQUELETICAS", "ZOONOSIS"
 ]
 
 DEPT_SYMBOLS = {
     "PEDIATRIA": "PNNA", "PED": "PNNA", "PEDIAT": "PNNA", "NIÑOS": "PNNA",
     "ADULTO MAYOR": "ADULTOS MAYOR", "GERIATRIA": "ADULTOS MAYOR",
-    "GENERAL": "GENERALES", "ODONTOLOGIA": "SALUD BUCAL", "ESTOMATITIS": "SALUD BUCAL"
+    "ODONTOLOGIA": "SALUD BUCAL", "ESTOMATITIS": "SALUD BUCAL",
+    "ENDOCRINO": "ENDOCRINO-METABOLICO", "DIABETES": "ENDOCRINO-METABOLICO",
+    "RESPIRATORIA": "PSALUD RESPIRATORIA", "ASMA": "PSALUD RESPIRATORIA",
+    "CANCER": "PREVENCION CANCER CUELLO UTERIN", "GINECOLOGIA": "SSR"
 }
 
 def get_worksheet_activities(ws_name):
@@ -61,26 +63,47 @@ def get_worksheet_activities(ws_name):
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws = sheet.worksheet(ws_name)
         rows = ws.col_values(1)[1:] # Saltar header
-        
         hierarchy_list = []
-        current_group = ""
+        current_section = "" # Nivel 1: Programa/Atención principal
+        current_group = ""   # Nivel 2: Sub-bloque (Riesgo, Diagnóstico, etc.)
         
-        # Heurística de jerarquía: si el nombre es corto y genérico (Niño, Niña, Masculino, Femenino)
-        # o si parece un ítem dependiente, le pegamos el contexto del grupo anterior.
-        items_dependientes = ["NIÑO", "NIÑA", "MASCULINO", "FEMENINO", "FILA", "TOTAL"]
-        
+        # Palabras que suelen definir una SECCIÓN PRINCIPAL
+        keywords_seccion = ["atención", "programa de", "total de consultas"]
+        # Palabras que suelen definir un SUB-GRUPO
+        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo"]
+        # Items que SIEMPRE son hojas (leafs)
+        items_leafs = ["MASCULINO", "FEMENINO", "NIÑO", "NIÑA", "TOTAL", "SÍ", "NO", "S/D"]
+
         for name in rows:
             name_clean = name.strip()
             if not name_clean: continue
             
-            upper_name = name_clean.upper()
+            # Limpiar nombre para comparación
+            norm_name = name_clean.lower()
             
-            # Si es un ítem genérico, usa el grupo actual como prefijo
-            if any(x in upper_name for x in items_dependientes) and current_group:
-                hierarchy_list.append(f"{current_group} > {name_clean}")
-            else:
-                current_group = name_clean
+            # Lógica de niveles
+            es_seccion = any(k in norm_name for k in keywords_seccion)
+            es_grupo = any(k in norm_name for k in keywords_grupo)
+            es_leaf = any(l in name_clean.upper() for l in items_leafs) or (len(name_clean) < 15 and ":" not in name_clean)
+
+            if es_seccion:
+                current_section = name_clean
+                current_group = ""
                 hierarchy_list.append(name_clean)
+            elif es_grupo:
+                current_group = name_clean
+                if current_section:
+                    hierarchy_list.append(f"{current_section} > {name_clean}")
+                else:
+                    hierarchy_list.append(name_clean)
+            else:
+                # Es un ítem final o sub-patología
+                if current_section and current_group:
+                    hierarchy_list.append(f"{current_section} > {current_group} > {name_clean}")
+                elif current_section:
+                    hierarchy_list.append(f"{current_section} > {name_clean}")
+                else:
+                    hierarchy_list.append(name_clean)
                 
         return hierarchy_list
     except Exception as e:
@@ -126,8 +149,8 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
         error_msg = str(e)
         if "429" in error_msg:
             st.error("🚨 **Límite de Quota Excedido (Error 429)**")
-            st.warning("Esto sucede porque tu cuenta/proyecto gratuito no tiene más peticiones disponibles hoy.")
-            st.info("💡 **Solución**: Intenta cambiar al modelo **Gemini 1.5 Flash** en la barra lateral, ya que suele tener cuotas independientes.")
+            st.warning("Esto significa que has usado todas las peticiones gratuitas permitidas para este modelo por ahora (suele ser un límite diario o de mensajes por minuto).")
+            st.info("💡 **Solución**: Cambia el modelo en la barra lateral a uno diferente (ej: de Flash a Pro o viceversa).")
         else:
             st.error(f"Error en {model_id}: {e}")
         return None
@@ -179,14 +202,11 @@ def guardar_datos_quirurgico(datos_json, semana):
             act_raw = str(item['actividad']).strip()
             valor = item['valor']
             
-            if " > " in act_raw:
-                partes = act_raw.split(" > ")
-                act_buscada = partes[-1].strip()
-                parent_buscado = partes[-2].strip()
-            else:
-                act_buscada = act_raw
-                parent_buscado = None
-
+            # Desglosar jerarquía completa
+            partes = [p.strip() for p in act_raw.split(" > ")]
+            act_buscada = partes[-1]
+            ancestros_buscados = [normalize_text(p) for p in partes[:-1]]
+            
             try:
                 valor_num = float(str(valor).replace(",", "."))
             except:
@@ -194,15 +214,22 @@ def guardar_datos_quirurgico(datos_json, semana):
             
             row_index = -1
             act_norm = normalize_text(act_buscada)
-            parent_norm = normalize_text(parent_buscado) if parent_buscado else None
 
-            # 1. Intento de búsqueda con contexto de jerarquía
+            # 1. Búsqueda con Validación de Coordenadas (Ancestros)
             for idx, c_norm in enumerate(conceptos_norm):
-                if act_norm == c_norm or act_norm in c_norm:
-                    if parent_norm:
-                        # Buscar el padre en las 25 filas anteriores
-                        rango_padres = conceptos_norm[max(0, idx-25):idx]
-                        if any(parent_norm in p for p in rango_padres):
+                if act_norm == c_norm: # Coincidencia exacta de ítem
+                    # Si tiene ancestros, verificamos que aparezcan arriba en orden
+                    if ancestros_buscados:
+                        # Buscamos hacia atrás desde la fila actual
+                        rango_previo = conceptos_norm[0:idx]
+                        encontrados = 0
+                        # Para cada ancestro buscado, verificamos si existe arriba
+                        # (Nota: los ancestros más cercanos suelen estar más cerca de la fila)
+                        for anc in reversed(ancestros_buscados):
+                            if any(anc in p for p in rango_previo):
+                                encontrados += 1
+                        
+                        if encontrados == len(ancestros_buscados):
                             row_index = idx + 1
                             break
                     else:
@@ -284,7 +311,13 @@ def aplicar_correccion(user_input, current_data, model_id='gemini-2.0-flash'):
             return json.loads(match.group(1))
         return json.loads(re.sub(r'```json\s*|\s*```', '', raw_text))
     except Exception as e:
-        st.error(f"Error en corrección: {e}")
+        error_msg = str(e)
+        if "429" in error_msg:
+            st.error("🚨 **Límite de Quota Excedido en el Chat (Error 429)**")
+            st.warning("Has alcanzado el límite de mensajes gratuitos para este modelo hoy.")
+            st.info("💡 **Solución**: Cambia a **Gemini 2.0 Flash** o **Gemini 1.5 Flash** en la barra lateral izquierda. Cada modelo tiene su propia cuota separada.")
+        else:
+            st.error(f"Error en el asistente de corrección: {e}")
         return None
 
 # --- 8. INTERFAZ ---
@@ -304,15 +337,16 @@ with st.sidebar:
     # 1. Selector de Modelo (Crisis de Quota fix)
     st.subheader("🤖 Cerebro AI")
     modelo_sel = st.selectbox(
-        "Versión de Gemini",
+        "🤖 Seleccionar Cerebro AI",
         [
-            "gemini-2.0-flash", 
-            "gemini-1.5-flash",
             "gemini-3-flash-preview", 
-            "gemini-3-pro-preview", 
-            "gemini-3-pro-image-preview",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-3-pro-preview",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash", 
         ],
-        help="Si uno da error de quota o 404, intenta con otro. Los modelos 'Gemini 3' son los más recientes."
+        help="Modelos 3.0: Máxima inteligencia. Modelos 2.5: Balance ideal. Si uno da error de quota (429), prueba con otro."
     )
     
     st.markdown("---")
@@ -436,7 +470,7 @@ if img:
                 st.session_state['current_res'] = res
                 st.rerun() # Recargar para mostrar tabla persistente
 
-if 'current_res' in st.session_state and img:
+if 'current_res' in st.session_state:
     res = st.session_state['current_res']
     st.success(f"📍 Hoja detectada: **{res['destino']}**")
     st.dataframe(pd.DataFrame(res['datos']), use_container_width=True)
@@ -469,9 +503,12 @@ if 'current_res' in st.session_state and img:
             st.rerun()
 
 # --- PANEL DE CHAT PARA CORRECCIONES ---
-if 'current_res' in st.session_state and img:
+if 'current_res' in st.session_state:
     st.markdown("---")
     st.subheader("💬 Asistente de Correcciones")
+    if st.button("🧹 LIMPIAR CHAT"):
+        st.session_state.chat_history = []
+        st.rerun()
     
     # Contenedor de mensajes
     chat_container = st.container(height=300)
@@ -498,6 +535,13 @@ if 'current_res' in st.session_state and img:
                 st.rerun()
             else:
                 st.error("No pude procesar esa corrección.")
+    
+    # --- CUADRO TOTALIZADOR (RESUMEN FINAL) ---
+    st.markdown("##### 📊 Resumen Totalizado (Correcciones Aplicadas)")
+    res_final = st.session_state['current_res']
+    df_resmen = pd.DataFrame(res_final['datos'])
+    # Mostrar como tabla compacta para mejor estética
+    st.table(df_resmen)
 
 if 'last_update_log' in st.session_state:
     st.markdown("---")

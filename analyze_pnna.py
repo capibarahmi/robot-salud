@@ -44,8 +44,9 @@ def analyze():
     ws = sheet.worksheet("PNNA")
     
     rows = ws.col_values(1)
-    for i, r in enumerate(rows[:100]):
-        print(f"{i+1}: {r}")
+    for i in range(229, 300): 
+        if i < len(rows):
+            print(f"{i+1}: {rows[i]}")
 
 if __name__ == "__main__":
     analyze()
