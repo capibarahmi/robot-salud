@@ -6,6 +6,7 @@ import pandas as pd
 import json
 import time
 import re
+import difflib
 from skills import AI_SKILLS
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
@@ -286,7 +287,15 @@ def guardar_datos_quirurgico(datos_json, semana):
                     row_index = idx + 1
                     break
             
-            # 2. Fallback: Búsqueda difusa del ítem final pero PROTEGIDA por sección
+            # 2. Fallback Intelligence: Fuzzy Match con Difflib (Para typos como "Hemapoyeticas")
+            if row_index == -1:
+                # Buscamos la ruta más parecida en todo el listado de rutas normalizadas
+                matches = difflib.get_close_matches(act_path_norm, rutas_norm, n=1, cutoff=0.85)
+                if matches:
+                    best_match = matches[0]
+                    row_index = rutas_norm.index(best_match) + 1
+            
+            # 3. Fallback: Búsqueda difusa del ítem final pero PROTEGIDA por sección (Contención)
             if row_index == -1:
                 item_norm = normalize_path(partes[-1])
                 seccion_norm = normalize_path(partes[0]) if partes else ""
