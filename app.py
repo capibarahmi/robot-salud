@@ -122,6 +122,9 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
     system_instruction = f"""
     {base_instruction}
     
+    HOJAS TÉCNICAS VÁLIDAS EN GOOGLE SHEETS (Usa una de estas para 'destino'):
+    {", ".join(HOJAS_VALIDAS)}
+    
     ESTRUCTURA DE FILAS DISPONIBLES EN {target_ws if target_ws else 'la hoja detectada'}:
     {lista_actividades_str}
     
@@ -161,6 +164,16 @@ def guardar_datos_quirurgico(datos_json, semana):
         # Forzar recarga del client si hay problema
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws_name = datos_json.get("destino")
+        
+        # Normalización de destino (Fallback si la IA puso nombre de sección)
+        if ws_name not in HOJAS_VALIDAS:
+            norm_target = str(ws_name).upper()
+            if any(k in norm_target for k in ["ESCOLAR", "NIÑ", "LACTANTE", "ADOLESCENTE", "PUERICULTURA"]):
+                ws_name = "PNNA"
+            elif any(k in norm_target for k in ["GERIATRIA", "MAYOR"]):
+                ws_name = "ADULTOS MAYOR"
+            elif any(k in norm_target for k in ["MUJER", "SSR", "PLANIFICACION"]):
+                ws_name = "SSR"
         
         if ws_name not in HOJAS_VALIDAS:
             return False, f"Hoja '{ws_name}' no reconocida en la lista de permitidas."
