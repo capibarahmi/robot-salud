@@ -114,7 +114,7 @@ def get_worksheet_activities(ws_name):
 def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="EPI (Individual)"):
     model = genai.GenerativeModel(model_id)
     
-    lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:300]]) if known_activities else "No disponible"
+    lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:800]]) if known_activities else "No disponible"
     
     # Seleccionar la instrucción según el skill
     base_instruction = AI_SKILLS.get(skill_name, AI_SKILLS["EPI (Individual)"])
@@ -193,19 +193,52 @@ def guardar_datos_quirurgico(datos_json, semana):
         if col_index == -1:
             return False, f"No se encontró la columna '{semana}' en la hoja {ws_name}."
 
-        # 2. Obtener todas las filas de una vez para comparar
+        # 2. Reconstruir jerarquía de la hoja para match exacto
         conceptos_hoja = ws.col_values(1)
-        conceptos_limpios = [str(c).strip().upper() for c in conceptos_hoja]
         
+        # Usamos la misma lógica de get_worksheet_activities para reconstruir rutas finales
+        rutas_excel = []
+        c_sec = ""
+        c_grp = ""
+        keywords_seccion = ["atención", "programa de", "total de consultas"]
+        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo"]
+        items_leafs = ["MASCULINO", "FEMENINO", "NIÑO", "NIÑA", "TOTAL", "SÍ", "NO", "S/D"]
+
+        for idx, val in enumerate(conceptos_hoja):
+            val_clean = str(val).strip()
+            if not val_clean: 
+                rutas_excel.append("")
+                continue
+            
+            norm = val_clean.lower()
+            es_seccion = any(k in norm for k in keywords_seccion)
+            es_grupo = any(k in norm for k in keywords_grupo)
+            
+            if es_seccion:
+                c_sec = val_clean
+                c_grp = ""
+                rutas_excel.append(val_clean)
+            elif es_grupo:
+                c_grp = val_clean
+                ruta = f"{c_sec} > {val_clean}" if c_sec else val_clean
+                rutas_excel.append(ruta)
+            else:
+                # Es un ítem final
+                if c_sec and c_grp:
+                    rutas_excel.append(f"{c_sec} > {c_grp} > {val_clean}")
+                elif c_sec:
+                    rutas_excel.append(f"{c_sec} > {val_clean}")
+                else:
+                    rutas_excel.append(val_clean)
+
         import unicodedata
-        def normalize_text(text):
+        def normalize_path(text):
             if not text: return ""
-            # Eliminar acentos y convertir a mayúsculas
+            # Eliminar acentos, espacios extras y > para comparar rutas
             text = "".join(c for c in unicodedata.normalize('NFD', str(text)) if unicodedata.category(c) != 'Mn')
-            # Dejar solo letras y números
             return re.sub(r'[^A-Z0-9]', '', text.upper())
 
-        conceptos_norm = [normalize_text(c) for c in conceptos_hoja]
+        rutas_norm = [normalize_path(r) for r in rutas_excel]
         
         log_cambios = []
         updates = [] 
@@ -226,33 +259,19 @@ def guardar_datos_quirurgico(datos_json, semana):
                 continue
             
             row_index = -1
-            act_norm = normalize_text(act_buscada)
+            act_path_norm = normalize_path(act_raw)
 
-            # 1. Búsqueda con Validación de Coordenadas (Ancestros)
-            for idx, c_norm in enumerate(conceptos_norm):
-                if act_norm == c_norm: # Coincidencia exacta de ítem
-                    # Si tiene ancestros, verificamos que aparezcan arriba en orden
-                    if ancestros_buscados:
-                        # Buscamos hacia atrás desde la fila actual
-                        rango_previo = conceptos_norm[0:idx]
-                        encontrados = 0
-                        # Para cada ancestro buscado, verificamos si existe arriba
-                        # (Nota: los ancestros más cercanos suelen estar más cerca de la fila)
-                        for anc in reversed(ancestros_buscados):
-                            if any(anc in p for p in rango_previo):
-                                encontrados += 1
-                        
-                        if encontrados == len(ancestros_buscados):
-                            row_index = idx + 1
-                            break
-                    else:
-                        row_index = idx + 1
-                        break
+            # 1. Búsqueda por RUTA COMPLETA EXACTA (Blindaje contra grupos de edad)
+            for idx, r_norm in enumerate(rutas_norm):
+                if act_path_norm == r_norm:
+                    row_index = idx + 1
+                    break
             
-            # 2. Fallback: Búsqueda difusa si no se encontró
+            # 2. Fallback: Búsqueda difusa del ítem final si falló la ruta (menos seguro)
             if row_index == -1:
-                for idx, c_norm in enumerate(conceptos_norm):
-                    if act_norm in c_norm or c_norm in act_norm:
+                item_norm = normalize_path(partes[-1])
+                for idx, r_norm in enumerate(rutas_norm):
+                    if item_norm in r_norm:
                         row_index = idx + 1
                         break
 
