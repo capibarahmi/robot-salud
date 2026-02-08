@@ -251,7 +251,7 @@ def guardar_datos_quirurgico(datos_json, semana):
             # Desglosar jerarquía completa
             partes = [p.strip() for p in act_raw.split(" > ")]
             act_buscada = partes[-1]
-            ancestros_buscados = [normalize_text(p) for p in partes[:-1]]
+            ancestros_buscados = [normalize_path(p) for p in partes[:-1]]
             
             try:
                 valor_num = float(str(valor).replace(",", "."))
