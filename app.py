@@ -28,7 +28,10 @@ def get_gspread_client():
 
 # Configuración inicial de las llaves
 if 'api_key_pool' not in st.session_state:
-    st.session_state['api_key_pool'] = [st.secrets.get("GEMINI_API_KEY")] if "GEMINI_API_KEY" in st.secrets else []
+    pool = []
+    if "GEMINI_API_KEY" in st.secrets: pool.append(st.secrets["GEMINI_API_KEY"])
+    if "GEMINI_API_KEY_2" in st.secrets: pool.append(st.secrets["GEMINI_API_KEY_2"])
+    st.session_state['api_key_pool'] = pool
 if 'current_key_index' not in st.session_state:
     st.session_state['current_key_index'] = 0
 
@@ -66,6 +69,152 @@ DEPT_SYMBOLS = {
     "ENDOCRINO": "ENDOCRINO-METABOLICO", "DIABETES": "ENDOCRINO-METABOLICO",
     "RESPIRATORIA": "PSALUD RESPIRATORIA", "ASMA": "PSALUD RESPIRATORIA",
     "CANCER": "PREVENCION CANCER CUELLO UTERIN", "GINECOLOGIA": "SSR"
+}
+
+# Diccionario de correcciones manuales para items específicos que la IA suele fallar
+# Clave: (Palabra clave de Sección, Palabra clave del Item) -> Valor exacto en Excel
+CORRECCIONES_MAPEO = {
+    # ============== LACTANTES Y PREESCOLARES ==============
+    # SEXO
+    ("LACTANTE", "MASCULINO"): "Masculino Lactantes y Pre-escolares",
+    ("LACTANTE", "FEMENINO"): "Femenino Lactantes y Pre-escolares",
+    ("PREESCOLAR", "MASCULINO"): "Masculino Lactantes y Pre-escolares",
+    ("PREESCOLAR", "FEMENINO"): "Femenino Lactantes y Pre-escolares",
+    
+    # CONSULTAS LACTANTE (< 23 meses)
+    ("LACTANTE", "1MES"): "A. 1rea Consulta < de 1 mes",
+    ("LACTANTE", "< 1 MES"): "A. 1rea Consulta < de 1 mes",
+    ("LACTANTE", "1-11"): "B. 1era. Consulta de 1 a 11 meses",
+    ("LACTANTE", "12-23"): "C. 1era. Consulta de 12 a 23 meses",
+    ("LACTANTE", "SUCESIVA"): "D. Consulta Sucesivas <  23 Meses",
+    
+    # CONSULTAS PREESCOLAR (2-6 años)
+    ("PREESCOLAR", "2-3"): "A. 1era. Consulta de 2 a 3 años",
+    ("PREESCOLAR", "2A3"): "A. 1era. Consulta de 2 a 3 años",
+    ("PREESCOLAR", "4-6"): "B. 1era. Consulta de 4 a 6 años",
+    ("PREESCOLAR", "4A6"): "B. 1era. Consulta de 4 a 6 años",
+    ("PREESCOLAR", "SUCESIVA"): "D. Consultas Sucesivas de 2 a 6 años",
+    
+    # DIAGNÓSTICO LACTANTE/PREESCOLAR
+    ("LACTANTE", "SANO"): "Lactantes Sanos",
+    ("LACTANTE", "ENFERMO"): "Lactantes Enfermos",
+    ("PREESCOLAR", "SANO"): "Pre-escolares Sanos",
+    ("PREESCOLAR", "ENFERMO"): "Pre-escolares Enfermos",
+    
+    # PATOLOGÍAS LACTANTE/PREESCOLAR
+    ("LACTANTE", "HEMAPOYETICA"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("LACTANTE", "HEMAPOYETICAS"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("LACTANTE", "ENDOCRINO"): "Enf. Endocrina, Nutricional y Metabólica",
+    ("LACTANTE", "MENTAL"): "Enf. Trastorno Mental y Comportamiento",
+    ("LACTANTE", "NERVIOSO"): "Enf. del Sistema Nervioso",
+    ("LACTANTE", "OJO"): "Enf. del Ojo y sus Anexos",
+    ("LACTANTE", "OIDO"): "Enf. del Oído y Apófisis Mastoides",
+    ("LACTANTE", "CIRCULATORIO"): "Enf. del Sistema Circulatorio",
+    ("LACTANTE", "RESPIRATORIO"): "Enf. del Sistema Respiratorio",
+    ("LACTANTE", "DIGESTIVO"): "Enf. del Sistema Digestivo",
+    ("LACTANTE", "PIEL"): "Enf. de la Piel y Tej. Conjuntivo",
+    ("LACTANTE", "GENITOURINARIO"): "Enf. Genital y Urinaria",
+    ("LACTANTE", "GENITURINARIO"): "Enf. Genital y Urinaria",
+    
+    # ============== ESCOLARES ==============
+    # SEXO ESCOLAR
+    ("ESCOLAR", "MASCULINO"): "Masculino Escolar",
+    ("ESCOLAR", "FEMENINO"): "Femenino Escolar",
+    
+    # CONSULTAS ESCOLARES POR GRADO
+    ("ESCOLAR", "SUCESIVA"): "D.- Consultas Sucesivas y Otros Grados",
+    ("ESCOLAR", "PRIMERA"): "A.- 1era. Consulta 1er Grado", 
+    ("ESCOLAR", "1ER GRADO"): "A.- 1era. Consulta 1er Grado",
+    ("ESCOLAR", "1ER"): "A.- 1era. Consulta 1er Grado",
+    ("ESCOLAR", "3ER GRADO"): "B.- 1era. Consulta 3er Grado",
+    ("ESCOLAR", "3ER"): "B.- 1era. Consulta 3er Grado",
+    ("ESCOLAR", "6TO GRADO"): "C.- 1era. Consulta 6to Grado",
+    ("ESCOLAR", "6TO"): "C.- 1era. Consulta 6to Grado",
+    
+    # DIAGNÓSTICO ESCOLAR
+    ("ESCOLAR", "SANO"): "Escolares Sanos",
+    ("ESCOLAR", "ENFERMO"): "Escolares Enfermos",
+    ("ESCOLAR", "ESCOLARES SANOS"): "Escolares Sanos",
+    ("ESCOLAR", "ESCOLARES ENFERMOS"): "Escolares Enfermos",
+    
+    # PATOLOGÍAS ESCOLARES
+    ("ESCOLAR", "HEMAPOYETICA"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("ESCOLAR", "HEMAPOYETICAS"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("ESCOLAR", "ENDOCRINO"): "Enf. Endocrina, Nutricional y Metabólica",
+    ("ESCOLAR", "MENTAL"): "Enf. Trastorno Mental y Compotamiento",
+    ("ESCOLAR", "NERVIOSO"): "Enf. del Sistema Nervioso",
+    ("ESCOLAR", "OJO"): "Enf. del Ojo y Sus Anexos",
+    ("ESCOLAR", "OIDO"): "Enf. del Oído y Apófisis Mastoides",
+    ("ESCOLAR", "CIRCULATORIO"): "Enf. del Sistema Circulatorio",
+    ("ESCOLAR", "RESPIRATORIO"): "Enf. Sistema Respiratorio",
+    ("ESCOLAR", "DIGESTIVO"): "Enf. del Sistema Digestivo",
+    ("ESCOLAR", "PIEL"): "Enf. de la Piel y Tej. Conjuntivo",
+    ("ESCOLAR", "GENITOURINARIO"): "Enf. Genital y Urinaría",
+    ("ESCOLAR", "GENITURINARIO"): "Enf. Genital y Urinaría",
+    
+    # ============== ADOLESCENTES (12-19 años) ==============
+    # SEXO
+    ("ADOLESCENTE", "MASCULINO"): "Total Masculino Adolescentes",
+    ("ADOLESCENTE", "FEMENINO"): "Total Femenino Adolescentes",
+    
+    # CONSULTAS
+    ("ADOLESCENTE", "PRIMERA"): "A. Primera Consulta Adolescentes",
+    ("ADOLESCENTE", "SUCESIVA"): "D. Consulta Sucesiva Adolescentes",
+    
+    # DIAGNÓSTICO
+    ("ADOLESCENTE", "SANO"): "Adolescentes Sano",
+    ("ADOLESCENTE", "ENFERMO"): "Adolescentes Enfermo",
+    
+    # PATOLOGÍAS (mismas filas que otros grupos pero en sección Adolescentes)
+    ("ADOLESCENTE", "HEMAPOYETICA"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("ADOLESCENTE", "HEMAPOYETICAS"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("ADOLESCENTE", "ENDOCRINO"): "Enf. Endocrina, Nutricional y Metabólica",
+    ("ADOLESCENTE", "MENTAL"): "Enf. Trastorno Mental y Comportamiento",
+    ("ADOLESCENTE", "NERVIOSO"): "Enf. del Sistema Nervioso",
+    ("ADOLESCENTE", "OJO"): "Enf. del Ojo y sus Anexos",
+    ("ADOLESCENTE", "OIDO"): "Enf. del Oído y Apófisis Mastoides",
+    ("ADOLESCENTE", "CIRCULATORIO"): "Enf. del Sistema Circulatorio",
+    ("ADOLESCENTE", "RESPIRATORIO"): "Enf. del Sistema Respiratorio",
+    ("ADOLESCENTE", "DIGESTIVO"): "Enf. del Sistema Digestivo",
+    ("ADOLESCENTE", "PIEL"): "Enf. de la Piel y Tej. Conjuntivo",
+    ("ADOLESCENTE", "GENITOURINARIO"): "Enf. Genital y Urinaria",
+    ("ADOLESCENTE", "GENITURINARIO"): "Enf. Genital y Urinaria",
+    
+    # ============== ADULTO MAYOR (60+ años) - HOJA: ADULTOS MAYOR ==============
+    # SEXO
+    ("ADULTO", "MASCULINO"): "Masculino",
+    ("ADULTO", "FEMENINO"): "Femenino",
+    ("3RA EDAD", "MASCULINO"): "Masculino",
+    ("3RA EDAD", "FEMENINO"): "Femenino",
+    ("60", "MASCULINO"): "Masculino",
+    ("60", "FEMENINO"): "Femenino",
+    
+    # CONSULTAS
+    ("ADULTO", "PRIMERA"): "Primera Consulta",
+    ("ADULTO", "SUCESIVA"): "Consulta Sucesiva",
+    ("3RA EDAD", "PRIMERA"): "Primera Consulta",
+    ("3RA EDAD", "SUCESIVA"): "Consulta Sucesiva",
+    
+    # DIAGNÓSTICO
+    ("ADULTO", "SANO"): "Adulto Sano",
+    ("ADULTO", "ENFERMO"): "Adulto Enfermo",
+    ("3RA EDAD", "SANO"): "Adulto Sano",
+    ("3RA EDAD", "ENFERMO"): "Adulto Enfermo",
+    
+    # PATOLOGÍAS (para hojas sin grupo etario, usar fuzzy matching normal)
+    ("ADULTO", "HEMAPOYETICA"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("ADULTO", "HEMAPOYETICAS"): "Enf. de la Sangre y Org. Hematopoyético",
+    ("ADULTO", "ENDOCRINO"): "Enf. Endocrina, Nutricional y Metabólica",
+    ("ADULTO", "MENTAL"): "Enf. Trastorno Mental y Comportamiento",
+    ("ADULTO", "NERVIOSO"): "Enf. del Sistema Nervioso",
+    ("ADULTO", "OJO"): "Enf. del Ojo y sus Anexos",
+    ("ADULTO", "OIDO"): "Enf. del Oído y Apófisis Mastoides",
+    ("ADULTO", "CIRCULATORIO"): "Enf. del Sistema Circulatorio",
+    ("ADULTO", "RESPIRATORIO"): "Enf. del Sistema Respiratorio",
+    ("ADULTO", "DIGESTIVO"): "Enf. del Sistema Digestivo",
+    ("ADULTO", "PIEL"): "Enf. de la Piel y Tej. Conjuntivo",
+    ("ADULTO", "GENITOURINARIO"): "Enf. Genital y Urinaria",
+    ("ADULTO", "GENITURINARIO"): "Enf. Genital y Urinaria",
 }
 
 def get_worksheet_activities(ws_name):
@@ -275,11 +424,32 @@ def guardar_datos_quirurgico(datos_json, semana):
             
             try:
                 valor_num = float(str(valor).replace(",", "."))
+                # Skip NaN and Infinity values (not JSON compliant)
+                import math
+                if math.isnan(valor_num) or math.isinf(valor_num):
+                    continue
             except:
                 continue
             
             row_index = -1
             act_path_norm = normalize_path(act_raw)
+            
+            # 0. PRE-CHECK: Correcciones Manuales (Diccionario)
+            # Buscamos si hay alguna regla específica para esta combinación Sección-Item
+            # IMPORTANTE: Buscar k_sec en TODO el path, no solo partes[0]
+            act_path_upper = act_raw.upper()
+            item_norm = normalize_path(partes[-1])
+            
+            for (k_sec, k_item), v_exact in CORRECCIONES_MAPEO.items():
+                # Buscar k_sec en CUALQUIER parte del path (para detectar ESCOLAR, LACTANTE, etc.)
+                # Y buscar k_item en el último segmento (el item específico)
+                if k_sec in act_path_upper and k_item in item_norm:
+                    # Buscar el índice de este valor exacto en rutas_excel
+                    for idx_r, r_real in enumerate(rutas_excel):
+                         if r_real.endswith(v_exact):
+                             row_index = idx_r + 1
+                             break
+                    if row_index != -1: break
 
             # 1. Búsqueda por RUTA COMPLETA EXACTA (Blindaje contra grupos de edad)
             for idx, r_norm in enumerate(rutas_norm):
@@ -311,6 +481,31 @@ def guardar_datos_quirurgico(datos_json, semana):
                         break
 
             if row_index != -1:
+                # --- NUEVA PROTECCIÓN: NO ESCRIBIR EN ENCABEZADOS DE SECCIÓN ---
+                # Si la fila encontrada es un encabezado (estaba en keywords_seccion), intentamos redirigir al TOTAL
+                nombre_fila_encontrada = conceptos_hoja[row_index - 1].strip()
+                es_header_seccion = any(k in nombre_fila_encontrada.lower() for k in keywords_seccion) and "total" not in nombre_fila_encontrada.lower()
+                
+                if es_header_seccion:
+                    # Buscar un "Total" o "Masculino/Femenino" inmediatamente debajo o relacionado
+                    print(f"⚠️ Intento de escritura en encabezado '{nombre_fila_encontrada}'. Redirigiendo...")
+                    
+                    # Búsqueda local de un "Total" dentro del mismo bloque (próximas 5 filas)
+                    nuevo_index = -1
+                    for offset in range(1, 8):
+                        if row_index + offset > len(conceptos_hoja): break
+                        val_next = conceptos_hoja[row_index + offset - 1].strip().lower()
+                        if "total" in val_next:
+                            nuevo_index = row_index + offset
+                            break
+                    
+                    if nuevo_index != -1:
+                        row_index = nuevo_index
+                    else:
+                        errores_mapeo.append(f"{act_raw} (Es un encabezado y no hallé 'Total')")
+                        continue
+                # ---------------------------------------------------------------
+            
                 from gspread.utils import rowcol_to_a1
                 range_name = rowcol_to_a1(row_index, col_index)
                 updates.append({'range': range_name, 'values': [[valor_num]]})
@@ -528,10 +723,37 @@ with col1:
     img = None
     
     with tab1:
-        f_up = st.file_uploader("Selecciona imagen del reporte", type=['jpg','png','jpeg'])
-        if f_up: 
-            img = f_up.getvalue()
-            st.session_state.captured_img = None # Limpiar captura de cámara si se sube archivo
+        f_up = st.file_uploader("Selecciona imagen o PDF del reporte", type=['jpg','png','jpeg','pdf'])
+        if f_up:
+            # Check if it's a PDF file
+            if f_up.name.lower().endswith('.pdf'):
+                try:
+                    import fitz  # pymupdf
+                    pdf_bytes = f_up.read()
+                    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                    
+                    # Convert each page to image
+                    pdf_pages = []
+                    for page_num in range(len(doc)):
+                        page = doc.load_page(page_num)
+                        # Render at 2x for better quality
+                        mat = fitz.Matrix(2, 2)
+                        pix = page.get_pixmap(matrix=mat)
+                        pdf_pages.append(pix.tobytes("png"))
+                    doc.close()
+                    
+                    st.session_state['pdf_pages'] = pdf_pages
+                    st.session_state['pdf_page_index'] = 0
+                    st.session_state['pdf_name'] = f_up.name
+                    st.success(f"📄 PDF cargado: **{len(pdf_pages)} páginas** detectadas")
+                    img = pdf_pages[0]  # Start with first page
+                except Exception as e:
+                    st.error(f"Error leyendo PDF: {e}")
+                    img = None
+            else:
+                img = f_up.getvalue()
+                st.session_state.pop('pdf_pages', None)  # Clear PDF state
+            st.session_state.captured_img = None
             
     with tab2:
         if not st.session_state.cam_active:
@@ -542,7 +764,8 @@ with col1:
             f_cam = st.camera_input("Capturar con cámara")
             if f_cam:
                 st.session_state.captured_img = f_cam.getvalue()
-                st.session_state.cam_active = False # Apagar cámara tras captura
+                st.session_state.cam_active = False
+                st.session_state.pop('pdf_pages', None)  # Clear PDF state
                 st.rerun()
             
             if st.button("🚫 DESACTIVAR CÁMARA", use_container_width=True):
@@ -552,6 +775,33 @@ with col1:
     # Priorizar la imagen capturada si existe, de lo contrario la subida
     if st.session_state.captured_img:
         img = st.session_state.captured_img
+
+# --- PDF Page Navigation ---
+if 'pdf_pages' in st.session_state and st.session_state['pdf_pages']:
+    pdf_pages = st.session_state['pdf_pages']
+    page_idx = st.session_state.get('pdf_page_index', 0)
+    total_pages = len(pdf_pages)
+    
+    st.info(f"📄 **{st.session_state.get('pdf_name', 'PDF')}** - Página {page_idx + 1} de {total_pages}")
+    
+    col_prev, col_next, col_process_all = st.columns([1, 1, 2])
+    with col_prev:
+        if st.button("⬅️ Anterior", disabled=(page_idx == 0)):
+            st.session_state['pdf_page_index'] = page_idx - 1
+            st.session_state.pop('current_res', None)  # Clear current results
+            st.rerun()
+    with col_next:
+        if st.button("➡️ Siguiente", disabled=(page_idx >= total_pages - 1)):
+            st.session_state['pdf_page_index'] = page_idx + 1
+            st.session_state.pop('current_res', None)  # Clear current results
+            st.rerun()
+    with col_process_all:
+        if st.button("🔄 PROCESAR TODAS LAS PÁGINAS", type="secondary"):
+            st.session_state['process_all_pages'] = True
+            st.rerun()
+    
+    # Use current page as image
+    img = pdf_pages[page_idx]
 
 if img:
     if st.button("🚀 ANALIZAR REPORTE", type="primary"):
@@ -565,7 +815,7 @@ if img:
             )
             if res:
                 st.session_state['current_res'] = res
-                st.rerun() # Recargar para mostrar tabla persistente
+                st.rerun()
 
 if 'current_res' in st.session_state:
     res = st.session_state['current_res']
@@ -589,6 +839,12 @@ if 'current_res' in st.session_state:
     if not edited_df.equals(df_editor):
         st.session_state['current_res']['datos'] = edited_df.to_dict('records')
         # No hacemos rerun aquí para evitar loops, el botón de Guardar usará la data fresca
+    
+    # --- Mostrar razonamiento de la IA (dudas/confianza) ---
+    if 'razonamiento' in res and res['razonamiento']:
+        with st.expander("🧠 **Razonamiento de la IA** (Revisa antes de guardar)", expanded=True):
+            st.markdown(f"_{res['razonamiento']}_")
+            st.caption("⚠️ Si ves algún error en el razonamiento, corrige los valores arriba antes de guardar.")
     
     col_a, col_b = st.columns(2)
     with col_a:
