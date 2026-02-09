@@ -835,11 +835,87 @@ if 'pdf_pages' in st.session_state and st.session_state['pdf_pages']:
             st.rerun()
     with col_process_all:
         if st.button("🔄 PROCESAR TODAS LAS PÁGINAS", type="secondary"):
-            st.session_state['process_all_pages'] = True
+            st.session_state['batch_results'] = []
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i, page_img in enumerate(pdf_pages):
+                status_text.text(f"⏳ Procesando página {i+1} de {total_pages}...")
+                progress_bar.progress((i + 1) / total_pages)
+                
+                # Procesar cada página con auto-detección de hoja
+                res = procesar_imagen(
+                    page_img, 
+                    model_id=modelo_sel, 
+                    target_ws=None,  # Auto-detect
+                    known_activities=[],
+                    skill_name=skill_sel
+                )
+                
+                if res:
+                    st.session_state['batch_results'].append({
+                        'page': i + 1,
+                        'destino': res['destino'],
+                        'datos': res['datos'],
+                        'razonamiento': res.get('razonamiento', '')
+                    })
+            
+            progress_bar.empty()
+            status_text.empty()
+            st.success(f"✅ {len(st.session_state['batch_results'])} páginas procesadas")
             st.rerun()
     
     # Use current page as image
     img = pdf_pages[page_idx]
+
+# --- Mostrar resultados del procesamiento en lote ---
+if 'batch_results' in st.session_state and st.session_state['batch_results']:
+    st.markdown("## 📊 Resultados del Procesamiento en Lote")
+    
+    # Agrupar por hoja/departamento
+    results_by_sheet = {}
+    for result in st.session_state['batch_results']:
+        sheet_name = result['destino']
+        if sheet_name not in results_by_sheet:
+            results_by_sheet[sheet_name] = {'pages': [], 'all_data': []}
+        results_by_sheet[sheet_name]['pages'].append(result['page'])
+        results_by_sheet[sheet_name]['all_data'].extend(result['datos'])
+    
+    # Mostrar resumen por hoja
+    for sheet_name, sheet_data in results_by_sheet.items():
+        with st.expander(f"📑 **{sheet_name}** ({len(sheet_data['pages'])} páginas)", expanded=True):
+            st.caption(f"Páginas: {', '.join(map(str, sheet_data['pages']))}")
+            
+            # Mostrar datos combinados
+            df_sheet = pd.DataFrame(sheet_data['all_data'])
+            edited_df = st.data_editor(
+                df_sheet,
+                use_container_width=True,
+                num_rows="dynamic",
+                key=f"editor_{sheet_name}",
+                column_config={
+                    "actividad": st.column_config.TextColumn("Coordenada", width="large"),
+                    "valor": st.column_config.NumberColumn("Valor", min_value=0, format="%d")
+                }
+            )
+            
+            # Botón para guardar esta hoja
+            if st.button(f"💾 Guardar en {sheet_name}", key=f"save_{sheet_name}"):
+                with st.spinner(f"Guardando en {sheet_name}..."):
+                    res_to_save = {
+                        'destino': sheet_name,
+                        'datos': edited_df.to_dict('records')
+                    }
+                    exito, msj = guardar_datos_quirurgico(res_to_save, semana_sel)
+                    if exito:
+                        st.success(msj)
+                    else:
+                        st.error(msj)
+    
+    # Botón para limpiar resultados
+    if st.button("🗑️ Limpiar Resultados en Lote"):
+        st.session_state.pop('batch_results', None)
+        st.rerun()
 
 if img:
     if st.button("🚀 ANALIZAR REPORTE", type="primary"):
