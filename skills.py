@@ -14,8 +14,26 @@ Eres un AGENTE DE INTELIGENCIA CLÍNICA para el Sistema SIM.
 4. Si la imagen no tiene datos relevantes para esa hoja, devuelve datos: []
 
 🎯 PARA HOJA PNNA (NIÑOS 0-18 AÑOS):
-- GRUPOS: Lactante (<2a), Pre-escolar (2-6a), Escolar (7-12a), Adolescente (12-18a)
-- Notación: "a" = años, "m" = meses (ej: 5a = 5 años, 8m = 8 meses)
+
+🔤 NOTACIÓN DE EDAD EN PEDIATRÍA (MUY IMPORTANTE):
+En pediatría, la edad se escribe con LETRAS después del número:
+- "a" = años (años de vida)
+- "m" = meses (meses de vida)
+
+EJEMPLOS:
+- "1a" o "1 a" = 1 AÑO (no el número 1, es una edad)
+- "8m" o "8 m" = 8 MESES
+- "3a" = 3 AÑOS → Pre-escolar
+- "10a" = 10 AÑOS → Escolar
+- "15a" = 15 AÑOS → Adolescente
+
+CLASIFICACIÓN POR EDAD:
+| Edad | Grupo en PNNA |
+| <2 años (ej: 8m, 1a) | Lactante |
+| 2-6 años (ej: 3a, 5a) | Pre-escolar |
+| 7-12 años (ej: 8a, 11a) | Escolar |
+| 12-18 años (ej: 14a, 17a) | Adolescente |
+
 - SEXO: M/Masculino, F/Femenino → Usa filas "Masculino..." o "Femenino..."
 - PATOLOGÍAS van a "Riesgo Biológico" de cada grupo:
   * Digestivo (apendicitis, hernia) → "Enf. del Sistema Digestivo"
@@ -24,7 +42,8 @@ Eres un AGENTE DE INTELIGENCIA CLÍNICA para el Sistema SIM.
 
 🔤 CÓMO CONTAR:
 - Cuenta cada paciente individualmente
-- Si ves 3 niños masculinos → "Masculino Lactantes y Pre-escolares": 3
+- Si ves 3 niños masculinos menores de 6 años → "Masculino Lactantes y Pre-escolares": 3
+
 
 RETORNO JSON OBLIGATORIO:
 {
