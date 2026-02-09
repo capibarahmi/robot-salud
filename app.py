@@ -273,7 +273,7 @@ def get_worksheet_activities(ws_name):
         return []
 
 # --- 3. EL CEREBRO IA ---
-def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="EPI (Individual)"):
+def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="EPI (Individual)", user_context=""):
     model = genai.GenerativeModel(model_id)
     
     lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:800]]) if known_activities else "No disponible"
@@ -281,8 +281,18 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
     # Seleccionar la instrucción según el skill
     base_instruction = AI_SKILLS.get(skill_name, AI_SKILLS["EPI (Individual)"])
     
+    # Incluir instrucciones del usuario si existen
+    user_instructions_block = ""
+    if user_context:
+        user_instructions_block = f"""
+    
+    ⚠️ INSTRUCCIONES ESPECÍFICAS DEL USUARIO (PRIORIDAD ALTA):
+    {user_context}
+    """
+    
     system_instruction = f"""
     {base_instruction}
+    {user_instructions_block}
     
     HOJAS TÉCNICAS VÁLIDAS EN GOOGLE SHEETS (Usa una de estas para 'destino'):
     {", ".join(HOJAS_VALIDAS)}
@@ -822,26 +832,63 @@ if 'pdf_pages' in st.session_state and st.session_state['pdf_pages']:
     
     st.info(f"📄 **{st.session_state.get('pdf_name', 'PDF')}** - Página {page_idx + 1} de {total_pages}")
     
+    # --- Chat/Instrucciones para la IA ---
+    with st.expander("💬 **Instrucciones para la IA** (opcional)", expanded=False):
+        user_instructions = st.text_area(
+            "Escribe instrucciones específicas para la IA:",
+            placeholder="Ej: 'Esta página es de Escolares', 'Ignora la sección de nutrición', 'El total de masculinos es 5'",
+            key="ai_instructions"
+        )
+        if user_instructions:
+            st.session_state['ai_user_instructions'] = user_instructions
+            st.caption("✅ Instrucciones guardadas. Se usarán en el próximo análisis.")
+    
+    # --- Selección de páginas ---
+    with st.expander("📑 **Seleccionar Páginas a Procesar**", expanded=False):
+        page_options = [f"Página {i+1}" for i in range(total_pages)]
+        selected_pages = st.multiselect(
+            "Elige las páginas que quieres procesar:",
+            options=page_options,
+            default=[],
+            key="selected_pages_multi"
+        )
+        st.session_state['selected_page_indices'] = [int(p.replace("Página ", "")) - 1 for p in selected_pages]
+        
+        if selected_pages:
+            st.caption(f"📌 {len(selected_pages)} páginas seleccionadas")
+    
     col_prev, col_next, col_process_all = st.columns([1, 1, 2])
     with col_prev:
         if st.button("⬅️ Anterior", disabled=(page_idx == 0)):
             st.session_state['pdf_page_index'] = page_idx - 1
-            st.session_state.pop('current_res', None)  # Clear current results
+            st.session_state.pop('current_res', None)
             st.rerun()
     with col_next:
         if st.button("➡️ Siguiente", disabled=(page_idx >= total_pages - 1)):
             st.session_state['pdf_page_index'] = page_idx + 1
-            st.session_state.pop('current_res', None)  # Clear current results
+            st.session_state.pop('current_res', None)
             st.rerun()
     with col_process_all:
-        if st.button("🔄 PROCESAR TODAS LAS PÁGINAS", type="secondary"):
+        # Determinar label del botón según selección
+        selected_indices = st.session_state.get('selected_page_indices', [])
+        if selected_indices:
+            btn_label = f"🔄 PROCESAR {len(selected_indices)} PÁGINAS SELECCIONADAS"
+            pages_to_process = [(i, pdf_pages[i]) for i in selected_indices]
+        else:
+            btn_label = "🔄 PROCESAR TODAS LAS PÁGINAS"
+            pages_to_process = [(i, page) for i, page in enumerate(pdf_pages)]
+        
+        if st.button(btn_label, type="secondary"):
             st.session_state['batch_results'] = []
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            for i, page_img in enumerate(pdf_pages):
-                status_text.text(f"⏳ Procesando página {i+1} de {total_pages}...")
-                progress_bar.progress((i + 1) / total_pages)
+            # Usar las instrucciones del usuario si existen
+            user_instr = st.session_state.get('ai_user_instructions', '')
+            
+            for idx, (page_num, page_img) in enumerate(pages_to_process):
+                status_text.text(f"⏳ Procesando página {page_num + 1} de {total_pages}...")
+                progress_bar.progress((idx + 1) / len(pages_to_process))
                 
                 # Procesar cada página con auto-detección de hoja
                 res = procesar_imagen(
@@ -849,7 +896,8 @@ if 'pdf_pages' in st.session_state and st.session_state['pdf_pages']:
                     model_id=modelo_sel, 
                     target_ws=None,  # Auto-detect
                     known_activities=[],
-                    skill_name=skill_sel
+                    skill_name=skill_sel,
+                    user_context=user_instr  # Pasar instrucciones del usuario
                 )
                 
                 if res:
