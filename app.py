@@ -346,8 +346,27 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
     {user_context}
     """
     
+    # Bloque de hoja obligatoria si el usuario la seleccionó
+    sheet_enforcement = ""
+    if target_ws:
+        sheet_enforcement = f"""
+    
+    🔒 HOJA ASIGNADA POR EL USUARIO: "{target_ws}"
+    ⚠️ OBLIGATORIO: Debes usar EXACTAMENTE esta hoja como "destino".
+    NO auto-detectes otra hoja. El usuario ya eligió "{target_ws}".
+    Si ves datos de otro departamento en la imagen, IGNÓRALOS.
+    SOLO extrae datos que correspondan a "{target_ws}".
+    """
+    else:
+        sheet_enforcement = """
+    
+    🔍 MODO AUTO-DETECTAR: El usuario NO seleccionó hoja.
+    Detecta el departamento de la imagen y elige la hoja correcta.
+    """
+    
     system_instruction = f"""
     {base_instruction}
+    {sheet_enforcement}
     {user_instructions_block}
     
     HOJAS TÉCNICAS VÁLIDAS EN GOOGLE SHEETS (Usa una de estas para 'destino'):
@@ -357,7 +376,8 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
     {lista_actividades_str}
     
     CONTEXTO ACTUAL:
-    - Hoja Sugerida: {target_ws if target_ws else 'Auto-detectar'}
+    - Hoja Asignada: {target_ws if target_ws else 'Auto-detectar'}
+
     - Sistema: {skill_name}
     """
 
