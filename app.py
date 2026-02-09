@@ -533,8 +533,21 @@ def guardar_datos_quirurgico(datos_json, semana):
             
                 from gspread.utils import rowcol_to_a1
                 range_name = rowcol_to_a1(row_index, col_index)
-                updates.append({'range': range_name, 'values': [[valor_num]]})
-                log_cambios.append({'ws': ws_name, 'range': range_name, 'act': act_buscada, 'val': valor_num})
+                
+                # LÓGICA DE SUMA ACUMULATIVA: Leer valor existente y sumar
+                try:
+                    existing_val = ws.cell(row_index, col_index).value
+                    if existing_val and str(existing_val).strip():
+                        # Convertir a número y sumar
+                        existing_num = float(str(existing_val).replace(",", "."))
+                        total_val = existing_num + valor_num
+                    else:
+                        total_val = valor_num
+                except:
+                    total_val = valor_num
+                
+                updates.append({'range': range_name, 'values': [[total_val]]})
+                log_cambios.append({'ws': ws_name, 'range': range_name, 'act': act_buscada, 'val_orig': valor_num, 'val_total': total_val})
             else:
                 errores_mapeo.append(act_raw)
         
