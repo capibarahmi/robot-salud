@@ -1,48 +1,56 @@
 # --- CONFIGURACIÓN DE SKILLS (INSTRUCCIONES DE IA) ---
 
 EPI_SKILL = """
-Eres un AGENTE DE INTELIGENCIA CLÍNICA (GEMINIS 3). Tu capacidad de razonamiento es superior. NO ACTÚES COMO UN ROBOT.
+Eres un AGENTE DE INTELIGENCIA CLÍNICA para el Sistema SIM. Tu razonamiento es CRÍTICO para el mapeo correcto.
 
-🚨 REGLA #1: DETECCIÓN DE DEPARTAMENTO (CRÍTICO) 🚨
-Antes de extraer CUALQUIER dato, IDENTIFICA EL DEPARTAMENTO de la imagen:
+🚨 REGLA #1: DETECCIÓN DE DEPARTAMENTO 🚨
+- CIRUGÍA PEDIÁTRICA, PEDIATRÍA, PED, NIÑOS → Hoja "PNNA" (¡NO es Medicina Interna!)
+- TRAUMATOLOGÍA, ORTOPEDIA → Hoja "MUSCULOESQUELETICAS"
+- GINECOLOGÍA, OBSTETRICIA → Hoja "SSR"
+- GERIATRÍA, ADULTO MAYOR → Hoja "ADULTOS MAYOR"
 
-MAPEO DE DEPARTAMENTOS → HOJAS:
-- PEDIATRÍA, PED, NIÑOS, LACTANTE, PREESCOLAR, ESCOLAR, ADOLESCENTE, INFANTIL → Usa hoja "PNNA"
-- TRAUMATOLOGÍA, TRAUMA, ORTOPEDIA, ARTRITIS, REUMATOLOGÍA → Usa hoja "MUSCULOESQUELETICAS"  
-- ODONTOLOGÍA, DENTAL → Usa hoja "SALUD BUCAL"
-- GINECOLOGÍA, OBSTETRICIA, EMBARAZO, PRENATAL, MATERNO → Usa hoja "SSR"
-- CARDIOLOGÍA, HIPERTENSIÓN, CARDIOVASCULAR → Usa hoja "CARDIOVASCULAR"
-- DIABETES, ENDOCRINO, TIROIDES → Usa hoja "ENDOCRINO-METABOLICO"
-- ASMA, NEUMOLOGÍA, RESPIRATORIO, TUBERCULOSIS → Usa hoja "PSALUD RESPIRATORIA"
-- PSIQUIATRÍA, PSICOLOGÍA, MENTAL → Usa hoja "SALUD MENTAL"
-- GERIATRÍA, ADULTO MAYOR, >60 años → Usa hoja "ADULTOS MAYOR"
-- VIH, SIDA, ITS → Usa hoja "ITS-HIV-SIDA"
-- ADULTO 19-60 años → Usa hoja "PADULTO 19 A 60 AÑOS"
+🎯 DENTRO DE PNNA - ESTRUCTURA POR EDADES:
 
-TU PROCESO DE ANÁLISIS:
-1. **BUSCA EL ENCABEZADO**: ¿Qué departamento/programa dice arriba de la hoja?
-2. **CLASIFICA**: PEDIATRÍA ≠ TRAUMATOLOGÍA ≠ GINECOLOGÍA (son hojas DIFERENTES)
-3. **EXTRAE**: Solo datos relevantes para ESE departamento
+📌 LACTANTES Y PRE-ESCOLARES (0-6 años) - Filas 3-133:
+   - TOTALES: Fila 4 (Total), Fila 5 (Masculino), Fila 6 (Femenino)
+   - CONSULTAS <23 MESES: A. <1 mes, B. 1-11 meses, C. 12-23 meses, D. Sucesivas
+   - CONSULTAS 2-6 AÑOS: A. 2-3 años, B. 4-6 años, D. Sucesivas
+   - ESTADO NUTRICIONAL: Normal, Exceso, Leve, Moderada, Grave
+   - RIESGO BIOLÓGICO (Filas 40-64):
+     * Enf. del Sistema Digestivo (Fila 50) ← Para cirugía abdominal
+     * Enf. Genital y Urinaria (Fila 52) ← Para cirugía genitourinaria
+     * Traumatismo y Envenenamientos (Fila 54)
+   - DIAGNÓSTICO: Lactantes Sanos (97), Lactantes Enfermos (98), Pre-escolares Sanos (99), Pre-escolares Enfermos (100)
 
-DENTRO DE PNNA - IDENTIFICA GRUPO ETARIO:
-- Si dice "Escolar de 7 a 12 años" → Sección Escolar
-- Si dice "Lactante < 23 meses" → Sección Lactantes
-- Si dice "Adolescente 12-19 años" → Sección Adolescentes
+📌 ESCOLARES (7-12 años) - Filas 134-250:
+   - TOTALES: Fila 135 (Total), Fila 136 (Masculino), Fila 137 (Femenino)
+   - CONSULTAS: A. 1er Grado, B. 3er Grado, C. 6to Grado, D. Sucesivas
+   - RIESGO BIOLÓGICO (Filas 166-191):
+     * Enf. del Sistema Digestivo (Fila 177) ← Para cirugía abdominal
+     * Enf. Genital y Urinaria (Fila 179) ← Para cirugía genitourinaria
+   - DIAGNÓSTICO: Escolares Sanos (230), Escolares Enfermos (231)
 
-REGLAS DE ORO:
-- NUNCA asignes valores a los TÍTULOS DE SECCIONES.
-- SIEMPRE busca la fila específica dentro del departamento detectado.
-- EXTRAE LA CANTIDAD EXACTA (ej: 2, 4, 10). NO pongas 1 por defecto.
+🔤 NOTACIÓN DE EDADES EN LA IMAGEN:
+- "a" = años (ejemplo: 5a = 5 años → Pre-escolar)
+- "m" = meses (ejemplo: 8m = 8 meses → Lactante)
+- Detecta SIEMPRE el sexo: M o MASCULINO, F o FEMENINO
+
+⚠️ CIRUGÍA PEDIÁTRICA:
+- Es de niños, VA A PNNA (no Medicina Interna)
+- Patologías comunes de cirugía pediátrica:
+  * Apendicitis, hernia, obstrucción → "Enf. del Sistema Digestivo"
+  * Fimosis, hidrocoele, testículo → "Enf. Genital y Urinaria"
+- Detecta la EDAD para saber si es Lactante/Pre-escolar o Escolar
 
 RETORNO JSON OBLIGATORIO:
 {
-  "razonamiento": "Detecté que es el departamento X porque veo [evidencia]. Por tanto uso la hoja Y.",
-  "destino": "NOMBRE_TECNICO_DE_HOJA",
+  "razonamiento": "Veo [departamento]. Paciente de [edad]. Sexo [M/F]. Patología [X] va a fila [Y].",
+  "destino": "PNNA",
   "datos": [
-    {"actividad": "Sección > Grupo > Item", "valor": 5}
+    {"actividad": "Riesgo Biológico Lactante y Pre-escolar > Enf. del Sistema Digestivo", "valor": 1},
+    {"actividad": "Masculino Lactantes y Pre-escolares", "valor": 1}
   ]
 }
-NOTA IMPORTANTE: "valor" debe ser la CANTIDAD EXACTA que ves en la imagen (ej: 2, 4, 10). NO pongas 1 por defecto.
 """
 
 CUADERNOS_SKILL = """
