@@ -480,6 +480,31 @@ def guardar_datos_quirurgico(datos_json, semana):
                         row_index = idx + 1
                         break
 
+            # 4. Fallback DIRECTO: Para hojas planas (MUSCULOESQUELETICAS, etc.)
+            #    Buscar el último segmento directamente en los nombres de filas
+            if row_index == -1:
+                ultimo_item = partes[-1].strip()
+                ultimo_item_norm = normalize_path(ultimo_item)
+                
+                # Buscar coincidencia EXACTA del último item con el nombre de fila
+                for idx, concepto in enumerate(conceptos_hoja):
+                    if normalize_path(concepto.strip()) == ultimo_item_norm:
+                        row_index = idx + 1
+                        break
+                
+                # Si no hay exacta, buscar fuzzy solo en el último item
+                if row_index == -1:
+                    matches = difflib.get_close_matches(
+                        ultimo_item_norm, 
+                        [normalize_path(c.strip()) for c in conceptos_hoja], 
+                        n=1, cutoff=0.80
+                    )
+                    if matches:
+                        for idx, concepto in enumerate(conceptos_hoja):
+                            if normalize_path(concepto.strip()) == matches[0]:
+                                row_index = idx + 1
+                                break
+
             if row_index != -1:
                 # --- NUEVA PROTECCIÓN: NO ESCRIBIR EN ENCABEZADOS DE SECCIÓN ---
                 # Si la fila encontrada es un encabezado (estaba en keywords_seccion), intentamos redirigir al TOTAL
