@@ -7,7 +7,7 @@ import json
 import time
 import re
 import difflib
-from skills import AI_SKILLS
+from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
 @st.cache_resource
@@ -413,6 +413,84 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
             st.error(f"Error en {model_id}: {e}")
         return None
 
+# --- 3.B EL CEREBRO IA (TEXTO DIRECTO) ---
+def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="TEXTO DIRECTO (Chat)", conversation_history=None):
+    """Procesa texto pegado por el usuario y extrae datos para Google Sheets."""
+    model = genai.GenerativeModel(model_id)
+    
+    lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:800]]) if known_activities else "No disponible"
+    
+    base_instruction = TEXTO_DIRECTO_SKILL
+    
+    sheet_enforcement = ""
+    if target_ws:
+        sheet_enforcement = f"""
+    
+    🔒 HOJA ASIGNADA POR EL USUARIO: "{target_ws}"
+    ⚠️ OBLIGATORIO: Debes usar EXACTAMENTE esta hoja como "destino".
+    NO auto-detectes otra hoja. El usuario ya eligió "{target_ws}".
+    SOLO extrae datos que correspondan a "{target_ws}".
+    """
+    else:
+        sheet_enforcement = """
+    
+    🔍 MODO AUTO-DETECTAR: El usuario NO seleccionó hoja.
+    Detecta el departamento del texto y elige la hoja correcta.
+    """
+    
+    system_instruction = f"""
+    {base_instruction}
+    {sheet_enforcement}
+    
+    HOJAS TÉCNICAS VÁLIDAS EN GOOGLE SHEETS (Usa una de estas para 'destino'):
+    {", ".join(HOJAS_VALIDAS)}
+    
+    ESTRUCTURA DE FILAS DISPONIBLES EN {target_ws if target_ws else 'la hoja detectada'}:
+    {lista_actividades_str}
+    
+    CONTEXTO ACTUAL:
+    - Hoja Asignada: {target_ws if target_ws else 'Auto-detectar'}
+    - Sistema: {skill_name}
+    """
+    
+    # Construir el contenido del mensaje
+    messages = [system_instruction]
+    
+    # Si hay historial de conversación, incluirlo
+    if conversation_history:
+        history_text = "\n\nHISTORIAL DE CONVERSACIÓN PREVIO:\n"
+        for msg in conversation_history:
+            role = "USUARIO" if msg['role'] == 'user' else "ASISTENTE"
+            history_text += f"{role}: {msg['content']}\n"
+        messages[0] += history_text
+    
+    messages.append(f"\n\nDATOS DEL USUARIO:\n{texto_usuario}")
+    
+    try:
+        response = model.generate_content(messages)
+        raw_text = response.text.strip()
+        match = re.search(r'({.*})', raw_text, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+            return json.loads(json_str)
+        else:
+            clean_text = re.sub(r'```json\s*|\s*```', '', raw_text)
+            return json.loads(clean_text)
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
+            st.warning("🔄 **Límite de cuota alcanzado. Rotando API Key automáticamente...**")
+            st.session_state['current_key_index'] += 1
+            configure_genai()
+            return procesar_texto(texto_usuario, model_id, target_ws, known_activities, skill_name, conversation_history)
+        
+        if "429" in error_msg:
+            st.error("🚨 **Límite de Quota Excedido (Error 429)**")
+            st.info("💡 **Solución**: Agrega una API Key adicional en la barra lateral o cambia el modelo.")
+        else:
+            st.error(f"Error en {model_id}: {e}")
+        return None
+
 # --- 4. LÓGICA QUIRÚRGICA DE GUARDADO ---
 def guardar_datos_quirurgico(datos_json, semana):
     try:
@@ -678,6 +756,10 @@ if 'captured_img' not in st.session_state:
     st.session_state.captured_img = None
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
+if 'texto_chat_history' not in st.session_state:
+    st.session_state.texto_chat_history = []
+if 'texto_datos_acumulados' not in st.session_state:
+    st.session_state.texto_datos_acumulados = None
 
 # --- 7. CORRECCIONES POR CHAT ---
 def aplicar_correccion(user_input, current_data, model_id='gemini-2.0-flash'):
@@ -843,7 +925,7 @@ st.info(f"Modelo activo: **{modelo_sel}**")
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    tab1, tab2 = st.tabs(["📂 Subir Archivo", "📸 Cámara"])
+    tab1, tab2, tab3 = st.tabs(["📂 Subir Archivo", "📸 Cámara", "📝 Texto Directo"])
     img = None
     
     with tab1:
@@ -894,6 +976,82 @@ with col1:
             
             if st.button("🚫 DESACTIVAR CÁMARA", use_container_width=True):
                 st.session_state.cam_active = False
+                st.rerun()
+    
+    with tab3:
+        st.markdown("""    
+        💬 **Pega datos médicos** y la IA los analizará para subirlos a Google Sheets.
+        Puedes enviar varios mensajes y la IA irá **acumulando** los datos.
+        """)
+        
+        # Mostrar historial del chat de texto
+        texto_chat_container = st.container(height=250)
+        with texto_chat_container:
+            for msg in st.session_state.texto_chat_history:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+        
+        # Input de texto directo
+        texto_input = st.text_area(
+            "📋 Pega aquí los datos médicos:",
+            placeholder="Ej: HOJA PNNA - Lactantes: Masculino 19, Femenino 31, Sanos 18, Enfermos 16...\n\nTambién puedes pegar datos que extraigas de NotebookLM u otra fuente.",
+            height=150,
+            key="texto_directo_input"
+        )
+        
+        col_analizar, col_limpiar = st.columns([2, 1])
+        
+        with col_analizar:
+            if st.button("🚀 ANALIZAR TEXTO", type="primary", use_container_width=True, disabled=not texto_input):
+                if texto_input:
+                    # Guardar en historial
+                    st.session_state.texto_chat_history.append({"role": "user", "content": texto_input})
+                    
+                    with st.spinner(f"Analizando con {modelo_sel}..."):
+                        res = procesar_texto(
+                            texto_input,
+                            model_id=modelo_sel,
+                            target_ws=selected_ws,
+                            known_activities=activities_context,
+                            skill_name="TEXTO DIRECTO (Chat)",
+                            conversation_history=st.session_state.texto_chat_history[:-1]  # historial previo
+                        )
+                        
+                        if res:
+                            # Acumular datos si ya existen
+                            if st.session_state.texto_datos_acumulados and st.session_state.texto_datos_acumulados.get('destino') == res.get('destino'):
+                                # Merge: sumar valores de actividades iguales
+                                existing_data = {d['actividad']: d['valor'] for d in st.session_state.texto_datos_acumulados['datos']}
+                                for item in res['datos']:
+                                    act = item['actividad']
+                                    if act in existing_data:
+                                        existing_data[act] += item['valor']
+                                    else:
+                                        existing_data[act] = item['valor']
+                                st.session_state.texto_datos_acumulados['datos'] = [
+                                    {'actividad': k, 'valor': v} for k, v in existing_data.items()
+                                ]
+                                st.session_state.texto_datos_acumulados['razonamiento'] = res.get('razonamiento', '')
+                                msj_ia = f"✅ Datos acumulados. Ahora hay **{len(existing_data)}** conceptos para **{res['destino']}**."
+                            else:
+                                st.session_state.texto_datos_acumulados = res
+                                msj_ia = f"✅ Extraídos **{len(res['datos'])}** conceptos para **{res['destino']}**."
+                            
+                            # Copiar a current_res para que el flujo de guardado funcione
+                            st.session_state['current_res'] = st.session_state.texto_datos_acumulados
+                            st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_ia})
+                            st.rerun()
+                        else:
+                            msj_err = "❌ No pude extraer datos de ese texto. Intenta ser más específico."
+                            st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_err})
+                            st.rerun()
+        
+        with col_limpiar:
+            if st.button("🗑️ Limpiar Chat", use_container_width=True):
+                st.session_state.texto_chat_history = []
+                st.session_state.texto_datos_acumulados = None
+                if 'current_res' in st.session_state:
+                    del st.session_state['current_res']
                 st.rerun()
         
     # Priorizar la imagen capturada si existe, de lo contrario la subida
