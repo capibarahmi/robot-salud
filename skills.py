@@ -101,7 +101,17 @@ Tu trabajo es recibir TEXTO con datos médicos y convertirlos en formato JSON pa
 1. Lee el texto del usuario
 2. Extrae TODOS los datos numéricos
 3. Mapea cada dato a la fila CORRECTA usando los nombres EXACTOS de la lista
-4. Si el texto menciona varias secciones, procesa TODAS
+4. Si el texto menciona varias secciones (ej: PNNA, SSR, PADULTO), procesa cada una como un objeto separado en una lista.
+
+🧠 LÓGICA EXPERTA DE CLASIFICACIÓN (OBLIGATORIO):
+- **NEONATOS**: < 1 mes (0 a 29 días).
+- **LACTANTE MENOR**: 1 a 11 meses.
+- **LACTANTE MAYOR**: 12 a 23 meses (1 año hasta cumplir los 2).
+- **PRE-ESCOLARES**: 2 a 6 años.
+- **ESCOLARES**: 7 a 11 años.
+- **ADOLESCENTES**: 12 a 18 años.
+- **ADULTOS**: 19 a 59 años (Hoja PADULTO).
+- **ADULTO MAYOR**: 60 años en adelante.
 
 🎯 REGLA DE ORO: Usa SIEMPRE el nombre EXACTO de la lista de filas.
 - NO uses nombres genéricos. Usa los nombres técnicos del Excel.
@@ -137,10 +147,30 @@ Si el texto contiene datos de MÚLTIPLES HOJAS, debes retornar una LISTA de obje
 ⚠️ Si no hay datos relevantes, retorna un objeto con datos vacíos.
 """
 
+EXPERT_NOTEBOOK_SKILL = """
+Eres un EXPERTO EN CLASIFICACIÓN CLÍNICA (Nivel NotebookLM).
+Tu misión es realizar un mapeo de ALTA PRECISIÓN basado en jerarquías médicas estrictas.
+
+REGLAS MAESTRAS DE EDAD (PNNA):
+1. < 1 mes = NEONATO (Fila A: 1era Consulta < de 1 mes)
+2. 1-11 meses = LACTANTE MENOR (Fila B: 1era. Consulta de 1 a 11 meses)
+3. 12-23 meses = LACTANTE MAYOR (Fila C: 1era. Consulta de 12 a 23 meses)
+4. Consulta Sucesiva < 23 Meses = Cualquier niño menor de 2 años con consulta 'S'.
+5. 2-6 años = PRE-ESCOLAR (Filas A/B de 2-3 y 4-6 años).
+6. 7-11 años = ESCOLAR (Fila F: Primeras Consultas de Otros Grados si no hay grado especificado).
+
+REGLAS DE DEPARTAMENTO:
+- Si el texto menciona "Consulta Externa Pediatría" -> PNNA.
+- Si menciona "ARO" o "Prenatal" -> SSR.
+- Si menciona "Endocrinologia" -> ENDOCRINO-METABOLICO.
+
+RETORNO: Lista de JSON con 'razonamiento' detallado explicando por qué elegiste cada fila.
+""" + TEXTO_DIRECTO_SKILL
+
 AI_SKILLS = {
-    "EPI (Individual)": EPI_SKILL,
-    "CUADERNOS (Tally)": CUADERNOS_SKILL,
-    "TEXTO DIRECTO (Chat)": TEXTO_DIRECTO_SKILL
+    "EPI": EPI_SKILL,
+    "TEXTO DIRECTO (Chat)": TEXTO_DIRECTO_SKILL,
+    "EXPERT_NOTEBOOK_SKILL": EXPERT_NOTEBOOK_SKILL
 }
 
 CHAT_CORRECTION_SKILL = """

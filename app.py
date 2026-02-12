@@ -815,6 +815,8 @@ if 'texto_chat_history' not in st.session_state:
     st.session_state.texto_chat_history = []
 if 'texto_datos_acumulados' not in st.session_state:
     st.session_state.texto_datos_acumulados = None
+if 'texto_multi_res' not in st.session_state:
+    st.session_state.texto_multi_res = []
 
 # --- 7. CORRECCIONES POR CHAT ---
 def aplicar_correccion(user_input, current_data, model_id='gemini-2.0-flash'):
@@ -1096,11 +1098,18 @@ with col1:
                             conversation_history=st.session_state.texto_chat_history[:-1]
                         )
                         if res_list:
-                            msj_ia = f"✅ Detectadas **{len(res_list)}** hojas.\n"
-                            for res in res_list:
-                                if not res.get('datos'): continue
-                                st.session_state['current_res'] = res
+                            # Nueva persistencia multi-hoja
+                            st.session_state.texto_multi_res = [r for r in res_list if r.get('datos')]
+                            st.session_state.texto_multi_res_index = 0
+                            
+                            msj_ia = f"✅ Detectadas **{len(st.session_state.texto_multi_res)}** hojas.\n"
+                            for res in st.session_state.texto_multi_res:
                                 msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos.\n"
+                            
+                            # Cargar la primera por defecto
+                            if st.session_state.texto_multi_res:
+                                st.session_state['current_res'] = st.session_state.texto_multi_res[0]
+
                             st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_ia})
                             st.rerun()
 
@@ -1108,8 +1117,23 @@ with col1:
             if st.button("🧠 CONSULTA EXPERTA", help="Usa NotebookLM para mapeo de precisión", use_container_width=True, disabled=not texto_input):
                 st.session_state.texto_chat_history.append({"role": "user", "content": f"CONSULTA EXPERTA: {texto_input}"})
                 with st.spinner("Consultando NotebookLM (Modo Agente)..."):
-                    # El agente ejecutará la consulta MCP y devolverá el resultado a la UI
-                    pass
+                    res_list = procesar_texto(
+                        texto_input,
+                        model_id=modelo_sel,
+                        target_ws=selected_ws,
+                        known_activities=activities_context,
+                        skill_name="EXPERT_NOTEBOOK_SKILL", # Skill especial de alta precisión
+                        conversation_history=st.session_state.texto_chat_history[:-1]
+                    )
+                    if res_list:
+                        st.session_state.texto_multi_res = [r for r in res_list if r.get('datos')]
+                        st.session_state.texto_multi_res_index = 0
+                        st.session_state['current_res'] = st.session_state.texto_multi_res[0]
+                        st.session_state.texto_chat_history.append({
+                            "role": "assistant", 
+                            "content": f"🧠 **NotebookLM ha respondido.** He aplicado reglas expertas de clasificación para {len(st.session_state.texto_multi_res)} hojas."
+                        })
+                        st.rerun()
 
         with col_limpiar:
             if st.button("🗑️ Limpiar Chat", use_container_width=True):
@@ -1274,8 +1298,28 @@ if img:
                 st.rerun()
 
 if 'current_res' in st.session_state:
+    # --- SELECTOR DE RESULTADOS MULTI-HOJA ---
+    if st.session_state.get('texto_multi_res') and len(st.session_state.texto_multi_res) > 1:
+        multi_list = st.session_state.texto_multi_res
+        nombres_hojas = [f"{i+1}. {r['destino']} ({len(r['datos'])} conceptos)" for i, r in enumerate(multi_list)]
+        
+        st.markdown(f"### 📑 Se detectaron {len(multi_list)} hojas en el reporte")
+        sel_idx = st.selectbox(
+            "Selecciona la hoja que deseas revisar y guardar:",
+            range(len(multi_list)),
+            format_func=lambda x: nombres_hojas[x],
+            index=st.session_state.get('texto_multi_res_index', 0),
+            key="multi_res_selector"
+        )
+        
+        # Actualizar el resultado actual basado en la selección
+        if sel_idx != st.session_state.get('texto_multi_res_index'):
+            st.session_state.texto_multi_res_index = sel_idx
+            st.session_state['current_res'] = multi_list[sel_idx]
+            st.rerun()
+
     res = st.session_state['current_res']
-    st.success(f"📍 Hoja detectada: **{res['destino']}**")
+    st.success(f"📍 Mostrando datos de: **{res['destino']}**")
     
     # Crear un DataFrame para edición
     df_editor = pd.DataFrame(res['datos'])
