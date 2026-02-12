@@ -966,38 +966,43 @@ with col1:
     img = None
     
     with tab1:
-        f_up = st.file_uploader("Selecciona imagen o PDF del reporte", type=['jpg','png','jpeg','pdf'])
-        if f_up:
-            # Check if it's a PDF file
-            if f_up.name.lower().endswith('.pdf'):
-                try:
-                    import fitz  # pymupdf
-                    pdf_bytes = f_up.read()
-                    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-                    
-                    # Convert each page to image
-                    pdf_pages = []
-                    for page_num in range(len(doc)):
-                        page = doc.load_page(page_num)
-                        # Render at 2x for better quality
-                        mat = fitz.Matrix(2, 2)
-                        pix = page.get_pixmap(matrix=mat)
-                        pdf_pages.append(pix.tobytes("png"))
-                    doc.close()
-                    
-                    st.session_state['pdf_pages'] = pdf_pages
-                    st.session_state['pdf_page_index'] = 0
-                    st.session_state['pdf_name'] = f_up.name
-                    st.success(f"📄 PDF cargado: **{len(pdf_pages)} páginas** detectadas")
-                    img = pdf_pages[0]  # Start with first page
-                except Exception as e:
-                    st.error(f"Error leyendo PDF: {e}")
-                    img = None
-            else:
-                img = f_up.getvalue()
-                st.session_state.pop('pdf_pages', None)  # Clear PDF state
-            st.session_state.captured_img = None
+        f_up_list = st.file_uploader("Selecciona imágenes o PDFs (puedes elegir varios)", type=['jpg','png','jpeg','pdf'], accept_multiple_files=True)
+        if f_up_list:
+            all_pages = []
+            for f_up in f_up_list:
+                if f_up.name.lower().endswith('.pdf'):
+                    try:
+                        import fitz  # pymupdf
+                        pdf_bytes = f_up.read()
+                        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+                        for page_num in range(len(doc)):
+                            page = doc.load_page(page_num)
+                            mat = fitz.Matrix(2, 2)
+                            pix = page.get_pixmap(matrix=mat)
+                            all_pages.append({
+                                "source": f_up.name,
+                                "page": page_num + 1,
+                                "bytes": pix.tobytes("png")
+                            })
+                        doc.close()
+                    except Exception as e:
+                        st.error(f"Error leyendo PDF {f_up.name}: {e}")
+                else:
+                    all_pages.append({
+                        "source": f_up.name,
+                        "page": 1,
+                        "bytes": f_up.read()
+                    })
             
+            # Guardar en el lote si hay cambios
+            if 'batch_images' not in st.session_state or len(st.session_state['batch_images']) != len(all_pages):
+                st.session_state['batch_images'] = all_pages
+                st.session_state['batch_index'] = 0
+                st.success(f"📂 **{len(all_pages)}** páginas/imágenes listas para procesar.")
+            
+            img = st.session_state['batch_images'][st.session_state.get('batch_index', 0)]['bytes']
+            st.session_state.captured_img = None
+
     with tab2:
         if not st.session_state.cam_active:
             if st.button("📷 ACTIVAR CÁMARA", use_container_width=True):
@@ -1008,7 +1013,7 @@ with col1:
             if f_cam:
                 st.session_state.captured_img = f_cam.getvalue()
                 st.session_state.cam_active = False
-                st.session_state.pop('pdf_pages', None)  # Clear PDF state
+                st.session_state.pop('batch_images', None)  # Limpiar lote al usar cámara
                 st.rerun()
             
             if st.button("🚫 DESACTIVAR CÁMARA", use_container_width=True):
@@ -1095,97 +1100,90 @@ with col1:
     if st.session_state.captured_img:
         img = st.session_state.captured_img
 
-# --- PDF Page Navigation ---
-if 'pdf_pages' in st.session_state and st.session_state['pdf_pages']:
-    pdf_pages = st.session_state['pdf_pages']
-    page_idx = st.session_state.get('pdf_page_index', 0)
-    total_pages = len(pdf_pages)
+# --- Navegación del Lote (Batch) ---
+if 'batch_images' in st.session_state and st.session_state['batch_images']:
+    batch = st.session_state['batch_images']
+    b_idx = st.session_state.get('batch_index', 0)
+    total_items = len(batch)
+    current_item = batch[b_idx]
     
-    st.info(f"📄 **{st.session_state.get('pdf_name', 'PDF')}** - Página {page_idx + 1} de {total_pages}")
+    st.info(f"📄 **{current_item['source']}** - Parte {current_item['page']} de {total_items} en total")
     
     # --- Chat/Instrucciones para la IA ---
     with st.expander("💬 **Instrucciones para la IA** (opcional)", expanded=False):
         user_instructions = st.text_area(
             "Escribe instrucciones específicas para la IA:",
-            placeholder="Ej: 'Esta página es de Escolares', 'Ignora la sección de nutrición', 'El total de masculinos es 5'",
+            placeholder="Ej: 'Esta página es de Escolares', 'Ignora la sección de nutrición'",
             key="ai_instructions"
         )
         if user_instructions:
             st.session_state['ai_user_instructions'] = user_instructions
-            st.caption("✅ Instrucciones guardadas. Se usarán en el próximo análisis.")
     
     # --- Selección de páginas ---
-    with st.expander("📑 **Seleccionar Páginas a Procesar**", expanded=False):
-        page_options = [f"Página {i+1}" for i in range(total_pages)]
-        selected_pages = st.multiselect(
-            "Elige las páginas que quieres procesar:",
-            options=page_options,
+    with st.expander("📑 **Seleccionar para Procesamiento Masivo**", expanded=False):
+        options = [f"#{i+1}: {item['source']} (P{item['page']})" for i, item in enumerate(batch)]
+        selected = st.multiselect(
+            "Elige los reportes que quieres procesar en lote:",
+            options=options,
             default=[],
-            key="selected_pages_multi"
+            key="selected_batch_multi"
         )
-        st.session_state['selected_page_indices'] = [int(p.replace("Página ", "")) - 1 for p in selected_pages]
-        
-        if selected_pages:
-            st.caption(f"📌 {len(selected_pages)} páginas seleccionadas")
+        st.session_state['selected_batch_indices'] = [int(p.split(":")[0].replace("#", "")) - 1 for p in selected]
     
     col_prev, col_next, col_process_all = st.columns([1, 1, 2])
     with col_prev:
-        if st.button("⬅️ Anterior", disabled=(page_idx == 0)):
-            st.session_state['pdf_page_index'] = page_idx - 1
+        if st.button("⬅️ Anterior", disabled=(b_idx == 0)):
+            st.session_state['batch_index'] = b_idx - 1
             st.session_state.pop('current_res', None)
             st.rerun()
     with col_next:
-        if st.button("➡️ Siguiente", disabled=(page_idx >= total_pages - 1)):
-            st.session_state['pdf_page_index'] = page_idx + 1
+        if st.button("➡️ Siguiente", disabled=(b_idx >= total_items - 1)):
+            st.session_state['batch_index'] = b_idx + 1
             st.session_state.pop('current_res', None)
             st.rerun()
     with col_process_all:
-        # Determinar label del botón según selección
-        selected_indices = st.session_state.get('selected_page_indices', [])
+        selected_indices = st.session_state.get('selected_batch_indices', [])
         if selected_indices:
-            btn_label = f"🔄 PROCESAR {len(selected_indices)} PÁGINAS SELECCIONADAS"
-            pages_to_process = [(i, pdf_pages[i]) for i in selected_indices]
+            btn_label = f"🔄 PROCESAR {len(selected_indices)} SELECCIONADOS"
+            items_to_process = [(i, batch[i]) for i in selected_indices]
         else:
-            btn_label = "🔄 PROCESAR TODAS LAS PÁGINAS"
-            pages_to_process = [(i, page) for i, page in enumerate(pdf_pages)]
+            btn_label = "🔄 PROCESAR TODO EL LOTE"
+            items_to_process = [(i, item) for i, item in enumerate(batch)]
         
         if st.button(btn_label, type="secondary"):
             st.session_state['batch_results'] = []
             progress_bar = st.progress(0)
             status_text = st.empty()
-            
-            # Usar las instrucciones del usuario si existen
             user_instr = st.session_state.get('ai_user_instructions', '')
             
-            for idx, (page_num, page_img) in enumerate(pages_to_process):
-                status_text.text(f"⏳ Procesando página {page_num + 1} de {total_pages}...")
-                progress_bar.progress((idx + 1) / len(pages_to_process))
+            for idx, (original_idx, item) in enumerate(items_to_process):
+                status_text.text(f"⏳ Procesando {item['source']} ({idx+1}/{len(items_to_process)})...")
+                progress_bar.progress((idx + 1) / len(items_to_process))
                 
-                # Procesar cada página con auto-detección de hoja
                 res = procesar_imagen(
-                    page_img, 
+                    item['bytes'], 
                     model_id=modelo_sel, 
-                    target_ws=None,  # Auto-detect
+                    target_ws=None, 
                     known_activities=[],
                     skill_name=skill_sel,
-                    user_context=user_instr  # Pasar instrucciones del usuario
+                    user_context=user_instr
                 )
                 
                 if res:
                     st.session_state['batch_results'].append({
-                        'page': i + 1,
-                        'destino': res['destino'],
+                        'source': item['source'],
+                        'page': item['page'],
+                        'destino': res.get('destino', 'No detectado'),
                         'datos': res['datos'],
                         'razonamiento': res.get('razonamiento', '')
                     })
             
             progress_bar.empty()
             status_text.empty()
-            st.success(f"✅ {len(st.session_state['batch_results'])} páginas procesadas")
+            st.success(f"✅ {len(st.session_state['batch_results'])} reportes procesados")
             st.rerun()
     
-    # Use current page as image
-    img = pdf_pages[page_idx]
+    img = batch[b_idx]['bytes']
 
 # --- Mostrar resultados del procesamiento en lote ---
 if 'batch_results' in st.session_state and st.session_state['batch_results']:
@@ -1196,14 +1194,16 @@ if 'batch_results' in st.session_state and st.session_state['batch_results']:
     for result in st.session_state['batch_results']:
         sheet_name = result['destino']
         if sheet_name not in results_by_sheet:
-            results_by_sheet[sheet_name] = {'pages': [], 'all_data': []}
-        results_by_sheet[sheet_name]['pages'].append(result['page'])
+            results_by_sheet[sheet_name] = {'sources': [], 'all_data': []}
+        
+        source_info = f"{result['source']} (P{result['page']})"
+        results_by_sheet[sheet_name]['sources'].append(source_info)
         results_by_sheet[sheet_name]['all_data'].extend(result['datos'])
     
     # Mostrar resumen por hoja
     for sheet_name, sheet_data in results_by_sheet.items():
-        with st.expander(f"📑 **{sheet_name}** ({len(sheet_data['pages'])} páginas)", expanded=True):
-            st.caption(f"Páginas: {', '.join(map(str, sheet_data['pages']))}")
+        with st.expander(f"📑 **{sheet_name}** ({len(sheet_data['sources'])} reportes)", expanded=True):
+            st.caption(f"Orígenes: {', '.join(sheet_data['sources'])}")
             
             # Mostrar datos combinados
             df_sheet = pd.DataFrame(sheet_data['all_data'])
