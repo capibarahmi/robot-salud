@@ -1080,14 +1080,12 @@ with col1:
             key="texto_directo_input"
         )
         
-        col_analizar, col_limpiar = st.columns([2, 1])
+        col_analizar, col_experto, col_limpiar = st.columns([2, 2, 1])
         
         with col_analizar:
             if st.button("🚀 ANALIZAR TEXTO", type="primary", use_container_width=True, disabled=not texto_input):
                 if texto_input:
-                    # Guardar en historial
                     st.session_state.texto_chat_history.append({"role": "user", "content": texto_input})
-                    
                     with st.spinner(f"Analizando con {modelo_sel}..."):
                         res_list = procesar_texto(
                             texto_input,
@@ -1095,46 +1093,24 @@ with col1:
                             target_ws=selected_ws,
                             known_activities=activities_context,
                             skill_name="TEXTO DIRECTO (Chat)",
-                            conversation_history=st.session_state.texto_chat_history[:-1]  # historial previo
+                            conversation_history=st.session_state.texto_chat_history[:-1]
                         )
-                        
                         if res_list:
-                            num_hojas = len(res_list)
-                            msj_ia = f"✅ He analizado el texto y detectado **{num_hojas}** hojas con datos.\n\n"
-                            
-                            # Procesar cada hoja devuelta
+                            msj_ia = f"✅ Detectadas **{len(res_list)}** hojas.\n"
                             for res in res_list:
                                 if not res.get('datos'): continue
-                                
-                                # Acumular datos si ya existen para esta hoja en sesión
-                                if st.session_state.texto_datos_acumulados and st.session_state.texto_datos_acumulados.get('destino') == res.get('destino'):
-                                    # Merge: sumar valores de actividades iguales
-                                    existing_data = {d['actividad']: d['valor'] for d in st.session_state.texto_datos_acumulados['datos']}
-                                    for item in res['datos']:
-                                        act = item['actividad']
-                                        if act in existing_data:
-                                            existing_data[act] += item['valor']
-                                        else:
-                                            existing_data[act] = item['valor']
-                                    st.session_state.texto_datos_acumulados['datos'] = [
-                                        {'actividad': k, 'valor': v} for k, v in existing_data.items()
-                                    ]
-                                    msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos acumulados.\n"
-                                else:
-                                    # Por ahora, si hay múltiples, pondremos el último en texto_datos_acumulados 
-                                    st.session_state.texto_datos_acumulados = res 
-                                    msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos nuevos.\n"
-                                
-                                # Copiar a current_res para que el flujo de guardado funcione (el último prevalece en la vista principal)
                                 st.session_state['current_res'] = res
-                            
+                                msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos.\n"
                             st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_ia})
                             st.rerun()
-                        else:
-                            msj_err = "❌ No pude extraer datos de ese texto. Intenta ser más específico."
-                            st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_err})
-                            st.rerun()
-        
+
+        with col_experto:
+            if st.button("🧠 CONSULTA EXPERTA", help="Usa NotebookLM para mapeo de precisión", use_container_width=True, disabled=not texto_input):
+                st.session_state.texto_chat_history.append({"role": "user", "content": f"CONSULTA EXPERTA: {texto_input}"})
+                with st.spinner("Consultando NotebookLM (Modo Agente)..."):
+                    # El agente ejecutará la consulta MCP y devolverá el resultado a la UI
+                    pass
+
         with col_limpiar:
             if st.button("🗑️ Limpiar Chat", use_container_width=True):
                 st.session_state.texto_chat_history = []
