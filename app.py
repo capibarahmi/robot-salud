@@ -286,9 +286,9 @@ def get_worksheet_activities(ws_name):
         current_group = ""   # Nivel 2: Sub-bloque (Riesgo, Diagnóstico, etc.)
         
         # Palabras que suelen definir una SECCIÓN PRINCIPAL
-        keywords_seccion = ["atención", "programa de", "total de consultas", "lactante", "escolar", "adolescente"]
+        KEYWORDS_SECCION = ["atención al", "programa de", "atención en", "atención integral", "atención médica"]
         # Palabras que suelen definir un SUB-GRUPO
-        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
+        KEYWORDS_GRUPO = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
         # Items que SIEMPRE son hojas (leafs)
         items_leafs = ["MASCULINO", "FEMENINO", "NIÑO", "NIÑA", "TOTAL", "SÍ", "NO", "S/D"]
 
@@ -300,8 +300,8 @@ def get_worksheet_activities(ws_name):
             norm_name = name_clean.lower()
             
             # Lógica de niveles
-            es_seccion = any(k in norm_name for k in keywords_seccion)
-            es_grupo = any(k in norm_name for k in keywords_grupo)
+            es_seccion = any(k in norm_name for k in KEYWORDS_SECCION)
+            es_grupo = any(k in norm_name for k in KEYWORDS_GRUPO)
             es_leaf = any(l in name_clean.upper() for l in items_leafs) or (len(name_clean) < 15 and ":" not in name_clean)
 
             if es_seccion:
@@ -533,9 +533,12 @@ def guardar_datos_quirurgico(datos_json, semana):
         rutas_excel = []
         c_sec = ""
         c_grp = ""
-        keywords_seccion = ["atención", "programa de", "total de consultas", "lactante", "escolar", "adolescente"]
-        keywords_grupo = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
-        items_leafs = ["MASCULINO", "FEMENINO", "NIÑO", "NIÑA", "TOTAL", "SÍ", "NO", "S/D"]
+        # Palabras que definen una SECCIÓN o ENCABEZADO (Debe ser muy específico)
+        KEYWORDS_SECCION = ["atención al", "programa de", "atención en", "atención integral", "atención médica"]
+        # Palabras que definen un SUB-GRUPO
+        KEYWORDS_GRUPO = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
+        # Items que NO son encabezados aunque tengan palabras clave (Exclusiones)
+        EXCLUDE_HEADER = ["MASCULINO", "FEMENINO", "SANO", "ENFERMO", "NORMAL", "DÉFICIT", "ZONA CRÍTICA", "LEVE", "MODERADA", "GRAVE"]
 
         for idx, val in enumerate(conceptos_hoja):
             val_clean = str(val).strip()
@@ -544,8 +547,8 @@ def guardar_datos_quirurgico(datos_json, semana):
                 continue
             
             norm = val_clean.lower()
-            es_seccion = any(k in norm for k in keywords_seccion)
-            es_grupo = any(k in norm for k in keywords_grupo)
+            es_seccion = any(k in norm for k in KEYWORDS_SECCION)
+            es_grupo = any(k in norm for k in KEYWORDS_GRUPO)
             
             if es_seccion:
                 c_sec = val_clean
@@ -671,17 +674,22 @@ def guardar_datos_quirurgico(datos_json, semana):
 
             if row_index != -1:
                 # --- NUEVA PROTECCIÓN: NO ESCRIBIR EN ENCABEZADOS DE SECCIÓN ---
-                # Si la fila encontrada es un encabezado (estaba en keywords_seccion), intentamos redirigir al TOTAL
+                # Si la fila encontrada es un encabezado, intentamos redirigir al TOTAL
                 nombre_fila_encontrada = conceptos_hoja[row_index - 1].strip()
-                es_header_seccion = any(k in nombre_fila_encontrada.lower() for k in keywords_seccion) and "total" not in nombre_fila_encontrada.lower()
+                norm_fila = nombre_fila_encontrada.lower()
+                
+                # Criterio: Es header si tiene keyword de sección/grupo Y NO TIENE exclusiones de datos
+                es_header_seccion = (any(k in norm_fila for k in KEYWORDS_SECCION) or any(k in norm_fila for k in KEYWORDS_GRUPO)) \
+                                    and not any(e in nombre_fila_encontrada.upper() for e in EXCLUDE_HEADER) \
+                                    and "total" not in norm_fila
                 
                 if es_header_seccion:
                     # Buscar un "Total" o "Masculino/Femenino" inmediatamente debajo o relacionado
-                    print(f"⚠️ Intento de escritura en encabezado '{nombre_fila_encontrada}'. Redirigiendo...")
+                    print(f"⚠️ Redirigiendo desde encabezado '{nombre_fila_encontrada}'...")
                     
-                    # Búsqueda local de un "Total" dentro del mismo bloque (próximas 5 filas)
+                    # Búsqueda local de un "Total" dentro del mismo bloque (próximas 8 filas)
                     nuevo_index = -1
-                    for offset in range(1, 8):
+                    for offset in range(1, 10):
                         if row_index + offset > len(conceptos_hoja): break
                         val_next = conceptos_hoja[row_index + offset - 1].strip().lower()
                         if "total" in val_next:

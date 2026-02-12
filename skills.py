@@ -108,73 +108,64 @@ Tu trabajo es recibir TEXTO con datos médicos estructurados y convertirlos en e
 📋 TU TAREA:
 1. Lee el texto que el usuario te envía
 2. Extrae TODOS los datos numéricos (pacientes, conteos, totales por categoría)
-3. Mapea cada dato a la fila correcta de la hoja que el usuario asignó
-4. Si el texto menciona varias secciones (Lactantes, Escolares, Adolescentes), procesa TODAS
+3. Mapea cada dato a la fila CORRECTA usando los nombres que aparecen en "ESTRUCTURA DE FILAS DISPONIBLES"
+4. SIEMPRE usa el nombre EXACTO que aparece en la lista de filas disponibles si está presente.
+
+🎯 REGLA DE ORO PARA MAPEO:
+- Si el texto dice "Masculino: 19" en la sección de Lactantes, busca en la lista la fila que diga "Masculino Lactantes y Pre-escolares".
+- NO uses nombres genéricos. Usa los nombres técnicos del Excel.
 
 🎯 PARA HOJA PNNA (NIÑOS 0-18 AÑOS):
 
 CLASIFICACIÓN POR EDAD:
-| Edad Real | Grupo en PNNA |
-| < 2 años (0-23 meses) | Lactante |
-| 2-6 años | Pre-escolar |
-| 7-11 años | Escolar |
-| 12-18 años | Adolescente |
+| Texto del Usuario | Fila Técnica en Excel |
+|-------------------|-----------------------|
+| 0 a 6 años / Lactante / Preescolar | Pestaña PNNA - Sección Superior |
+| 7 a 11 años / Escolar | Pestaña PNNA - Sección Media |
+| 12 a 19 años / Adolescente | Pestaña PNNA - Sección Inferior |
 
-MAPEO DE SEXO:
-- Masculino de Lactantes/Preescolares → "Masculino Lactantes y Pre-escolares"
-- Femenino de Lactantes/Preescolares → "Femenino Lactantes y Pre-escolares"
-- Masculino de Escolares → "Masculino Escolares"
-- Femenino de Escolares → "Femenino Escolares"
-- Masculino de Adolescentes → "Total Masculino Adolescentes"
-- Femenino de Adolescentes → "Total Femenino Adolescentes"
+MAPEO TÉCNICO DE FILAS (USA ESTOS NOMBRES EXACTOS):
+1. SECCIÓN LACTANTE/PREESCOLAR:
+   - "Masculino Lactantes y Pre-escolares"
+   - "Femenino Lactantes y Pre-escolares"
+   - "B. 1era. Consulta de 1 a 11 meses"
+   - "D. Consulta Sucesivas <  23 Meses"
+   - "D. Consultas Sucesivas de 2 a 6 años"
+   - "Lactantes Sanos", "Lactantes Enfermos"
+   - "Pre-escolares Sanos", "Pre-escolares Enfermos"
+   - "Riesgo Biológico Lactante y Pre-escolar > Enf. del Sistema Respiratorio" (etc)
 
-MAPEO DE CONSULTAS:
-- Lactantes: "A.- 1era. consulta < 1 mes", "B.- 1era. consulta de 1 a 11 meses", "C.- 1era. consulta de 12 a 23 meses", "D.- Consultas Sucesivas"
-- Pre-escolares: "A.- 1era. consulta 2 a 3 años", "B.- 1era. consulta 4 a 6 años", "D.- Consultas Sucesivas"
-- Escolares: "A.- 1era. Consulta 1er Grado", "D.- Consultas Sucesivas"
-- Adolescentes: "A. Primera Consulta Adolescentes", "D. Consulta Sucesiva Adolescentes"
+2. SECCIÓN ESCOLAR:
+   - "Masculino Escolar"
+   - "Femenino Escolar"
+   - "A.- 1era. Consulta 1er Grado"
+   - "D.- Consultas Sucesivas y Otros Grados"
+   - "Escolares Sanos", "Escolares Enfermos"
+   - "Riesgo Biológico Escolar > Enf. Sistema Respiratorio" (etc)
 
-MAPEO DE DIAGNÓSTICO:
-- "Lactantes Sanos", "Lactantes Enfermos"
-- "Pre-escolares Sanos", "Pre-escolares Enfermos"
-- "Escolares Sanos", "Escolares Enfermos"
-- "Adolescentes Sano", "Adolescentes Enfermo"
+3. SECCIÓN ADOLESCENTE:
+   - "Total Masculino Adolescentes"
+   - "Total Femenino Adolescentes"
+   - "A. Primera Consulta Adolescentes"
+   - "D. Consulta Sucesiva Adolescentes"
+   - "Adolescentes Sano", "Adolescentes Enfermo"
 
-MAPEO DE ESTADO NUTRICIONAL:
-- "Normal" → va en la fila "Normal" de Estado Nutricional
-- "Déficit" → va en "Déficit Leve", "Déficit Moderado" o "Déficit Grave"
-
-MAPEO DE MORBILIDAD (Riesgo Biológico):
-- Infecciosas/Parasitarias → "Enf. Infecciosas y Parasitarias"
-- Respiratorio (rinitis, asma, neumonía, bronquitis) → "Enf. del Sistema Respiratorio"
-- Piel (dermatitis, prurigo, piodermitis) → "Enf. de la Piel y Tej. Conjuntivo"
-- Sangre (anemia, hemorrágica) → "Enf. de la Sangre y Org. Hematopoyético"
-- Genital/Urinario (ITU) → "Enf. Genital y Urinaria"
-- Traumatismos/Quemaduras → "Traumatismos, Envenenamientos y Otros"
-- Endocrino → "Enf. Endocrina, Nutricional y Metabólica"
-- Congénitas → "Anomalías Congénitas"
-- Digestivo → "Enf. del Sistema Digestivo"
-- Ojos → "Enf. del Ojo y sus Anexos"
-- Mental → "Enf. Trastorno Mental y Comportamiento"
-
-⚠️ IMPORTANTE SOBRE MORBILIDAD:
-- Cada sección (Lactante/Preescolar, Escolar, Adolescente) tiene SU PROPIO bloque de Riesgo Biológico
-- Mapea las enfermedades al bloque de morbilidad de la sección CORRECTA
-- Usa el path completo: "Sección > Riesgo Biológico > Enf. del Sistema Respiratorio"
+⚠️ IMPORTANTE SOBRE MORBILIDAD (RIESGO BIOLÓGICO):
+- Debes diferenciar entre secciones. Si la patología es de un escolar, usa "Riesgo Biológico Escolar > ...".
+- Si es de un lactante, usa "Riesgo Biológico Lactante y Pre-escolar > ...".
 
 🔤 REGLAS DE CONTEO:
-- Extrae los números EXACTOS que dice el texto
-- NO inventes datos; si algo no está mencionado, no lo incluyas
-- Si el texto dice "Masculino: 19", pon valor: 19
-- Si dice "Enf. Infecciosas: 4 (Onfalitis x2, Escabiosis, Tinea)", pon valor: 4
+- Extrae los números EXACTOS. Si dice "Total General: 50", IGNÓRALO (es un total).
+- Suma solo las filas individuales: Masculinos (19) + Femeninos (31) = 50 (el Excel hará la suma).
 
 RETORNO JSON OBLIGATORIO:
 {
-  "razonamiento": "El texto contiene datos de [secciones]. Extraigo X datos para [hoja].",
-  "destino": "[HOJA_ASIGNADA_POR_USUARIO]",
+  "razonamiento": "Analizo [sección]. Extraigo [datos encontrados]. Mapeo a los nombres técnicos del Excel.",
+  "destino": "PNNA",
   "datos": [
     {"actividad": "Masculino Lactantes y Pre-escolares", "valor": 19},
-    {"actividad": "Femenino Lactantes y Pre-escolares", "valor": 31}
+    {"actividad": "Femenino Lactantes y Pre-escolares", "valor": 31},
+    {"actividad": "B. 1era. Consulta de 1 a 11 meses", "valor": 1}
   ]
 }
 
