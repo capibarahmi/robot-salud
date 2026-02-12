@@ -450,6 +450,9 @@ ALL_SHEETS = {
   ],
 }
 
+# Lista exportable de hojas para validación en app.py
+HOJAS_VALIDAS = list(ALL_SHEETS.keys())
+
 # =====================================================================
 # REGLAS ESPECIALIZADAS PARA PNNA (de NotebookLM)
 # =====================================================================
