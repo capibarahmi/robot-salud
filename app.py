@@ -444,12 +444,12 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
             # Buscar lista JSON
             match = re.search(r'(\[.*\])', raw_id, re.DOTALL)
             if match:
-                detected_sheets = json.loads(match.group(1))
-                # Limpiar nombres de hojas para asegurar que existen
+                detected_sheets = json.loads(match.group(1).replace("'", '"')) # Asegurar comillas dobles
+                # FILTRO CRÍTICO: SOLO hojas que existan en el Excel
                 detected_sheets = [s for s in detected_sheets if s in HOJAS_VALIDAS]
             else:
-                # Fallback manual por si falla el JSON
-                detected_sheets = [h for h in HOJAS_VALIDAS if h in raw_id]
+                # Fallback manual ultra-estricto
+                detected_sheets = [h for h in HOJAS_VALIDAS if h.upper() in raw_id.upper()]
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:

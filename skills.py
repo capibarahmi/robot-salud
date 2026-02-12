@@ -148,20 +148,20 @@ Si el texto contiene datos de MÚLTIPLES HOJAS, debes retornar una LISTA de obje
 """
 
 IDENTIFICACION_SKILL = """
-Eres un CLASIFICADOR DE DEPARTAMENTOS MÉDICOS.
-Tu tarea es leer el texto del reporte y determinar qué HOJAS TÉCNICAS están presentes.
+Eres un CLASIFICADOR DE DEPARTAMENTOS MÉDICOS de alta precisión.
+Tu tarea es leer el texto del reporte y determinar EXACTAMENTE qué HOJAS TÉCNICAS están presentes.
 
-HOJAS VÁLIDAS SISTEMA SIM:
+HOJAS VÁLIDAS SISTEMA SIM (Usa SOLO estos nombres):
 {HOJAS_VALIDAS}
 
-REGLAS:
-1. Identifica qué hojas del sistema corresponden al contenido del texto.
-2. Si mencionan "Pediatra", "Niños", "Puericultura" -> PNNA.
-3. Si mencionan "Prenatal", "GYN", "ARO" -> SSR.
-4. Si mencionan "Medicina General", "Adultos", "Hematologia", "Gastro" -> PADULTO 19 A 60 AÑOS.
-5. Retorna SOLO una lista JSON con los nombres exactos de las hojas detectadas.
+REGLAS CRÍTICAS:
+1. **NO INVENTES NOMBRES**: Si ves datos de adolescentes, mapea a "PNNA" (no inventes "ADOLESCENTE").
+2. **SEA EXHAUSTIVO**: Si ves menciones a "Puericultura", "Escolares" y "Lactantes" -> PNNA.
+3. **PEQUEÑAS MENCIONES CUENTAN**: Si al final del texto hay un párrafo de "Prenatal" o "ARO", debes incluir "SSR".
+4. **EDADES**: 0-18 -> PNNA. 19-59 -> PADULTO 19 A 60 AÑOS. 60+ -> ADULTOS MAYOR.
+5. **ODONTOLOGÍA**: Si ves "Odontólogo" o "Salud Bucal" -> SALUD BUCAL.
 
-RETORNO JSON:
+RETORNO JSON OBLIGATORIO (Solo los nombres exactos de la lista):
 ["PNNA", "SSR", "PADULTO 19 A 60 AÑOS"]
 """
 
