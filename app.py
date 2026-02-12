@@ -725,11 +725,17 @@ def guardar_datos_quirurgico(datos_json, semana):
                 # ---------------------------------------------------------------
             
                 from gspread.utils import rowcol_to_a1
-                range_name = rowcol_to_a1(row_index, col_index)
                 
-                # LÓGICA DE SUMA ACUMULATIVA: Leer valor existente y sumar
+                # OPTIMIZACIÓN: Leer valores de la columna completa una sola vez si no se ha hecho
+                if 'current_col_values' not in locals():
+                    current_col_values = ws.col_values(col_index)
+                
+                # Obtener valor existente del array local (más rápido que ws.cell)
+                existing_val = ""
+                if row_index <= len(current_col_values):
+                    existing_val = current_col_values[row_index - 1]
+                
                 try:
-                    existing_val = ws.cell(row_index, col_index).value
                     if existing_val and str(existing_val).strip():
                         # Convertir a número y sumar
                         existing_num = float(str(existing_val).replace(",", "."))
@@ -739,6 +745,16 @@ def guardar_datos_quirurgico(datos_json, semana):
                 except:
                     total_val = valor_num
                 
+                # Actualizar el array local para que si otro ítem cae en la misma fila, se sume correctamente
+                if row_index <= len(current_col_values):
+                    current_col_values[row_index - 1] = str(total_val)
+                else:
+                    # Si la fila es nueva, extender el array
+                    while len(current_col_values) < row_index:
+                        current_col_values.append("")
+                    current_col_values[row_index - 1] = str(total_val)
+
+                range_name = rowcol_to_a1(row_index, col_index)
                 updates.append({'range': range_name, 'values': [[total_val]]})
                 log_cambios.append({'ws': ws_name, 'range': range_name, 'act': act_buscada, 'val_orig': valor_num, 'val_total': total_val})
             else:
