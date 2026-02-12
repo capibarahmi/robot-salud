@@ -451,6 +451,13 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                 # Fallback manual por si falla el JSON
                 detected_sheets = [h for h in HOJAS_VALIDAS if h in raw_id]
         except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
+                st.warning("🔄 **Límite en Paso 1. Rotando API Key...**")
+                st.session_state['current_key_index'] += 1
+                configure_genai()
+                return procesar_texto(texto_usuario, model_id, target_ws, known_activities, skill_name, conversation_history)
+            
             st.error(f"Error en Paso 1 (Identificación): {e}")
             # Fallback al modo antiguo si falla la identificación
             detected_sheets = []
@@ -525,10 +532,28 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                 
             # Pequeña pausa para evitar rate limit si hay muchas hojas
             if total_steps > 1:
-                time.sleep(1)
+                time.sleep(2) # Aumentar a 2 segundos por precaución
                 
         except Exception as e:
-            st.error(f"Error extrayendo {current_sheet}: {e}")
+            error_msg = str(e)
+            if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
+                st.warning(f"🔄 **Límite en {current_sheet}. Rotando y reintentando...**")
+                st.session_state['current_key_index'] += 1
+                configure_genai()
+                # Reintentar SOLO esta hoja llamando de nuevo al modelo (recursividad local no es ideal, pero funciona)
+                model = genai.GenerativeModel(model_id) # Refrescar modelo con nueva key
+                # Re-ejecutar este paso del bucle (una vez)
+                try:
+                    response = model.generate_content(messages)
+                    # (repetir lógica de parseo simplificada)
+                    raw_text = response.text.strip()
+                    parsed_data = json.loads(re.search(r'({.*}|\[.*\])', raw_text, re.DOTALL).group(1))
+                    if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
+                    else: all_final_results.append(parsed_data)
+                except:
+                    st.error(f"Falla crítica en {current_sheet} tras rotación.")
+            else:
+                st.error(f"Error extrayendo {current_sheet}: {e}")
             continue
 
     return all_final_results
