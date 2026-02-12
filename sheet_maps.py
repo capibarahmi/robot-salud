@@ -589,6 +589,18 @@ Solo escribe en filas INDIVIDUALES (datos específicos).
 
 
 # =====================================================================
+def get_all_sheets_combined_prompt():
+    """Genera un prompt consolidado con TODAS las hojas para modo AUTO-DETECT."""
+    consolidado = "📚 ESTRUCTURAS TÉCNICAS DE TODAS LAS HOJAS (Úsalas para mapeo preciso):\n"
+    for sheet_name, rows in ALL_SHEETS.items():
+        consolidado += f"\n📍 HOJA: \"{sheet_name}\"\n"
+        consolidado += "\n".join([f"  - {r}" for r in rows[:40]]) # Limite de 40 por hoja para no saturar
+        consolidado += "\n"
+    
+    consolidado += f"\n{REGLAS_EDAD}\n{REGLAS_CONSULTA}\n{DIAGNOSTICO_SISTEMA}"
+    return consolidado
+
+# =====================================================================
 # PROMPT COMPLETO PARA PNNA (retrocompatibilidad)
 # =====================================================================
 PNNA_MAPPING_PROMPT = get_sheet_prompt("PNNA")

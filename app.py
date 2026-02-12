@@ -8,7 +8,7 @@ import time
 import re
 import difflib
 from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL
-from sheet_maps import get_sheet_prompt, SHEET_ALIASES
+from sheet_maps import get_sheet_prompt, ALL_SHEETS, HOJAS_VALIDAS, get_all_sheets_combined_prompt
 from sync_generales import sync_generales
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
@@ -434,7 +434,12 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
     
     base_instruction = TEXTO_DIRECTO_SKILL
     # Inyectar filas dinámicas de la hoja destino
-    sheet_rows_prompt = get_sheet_prompt(target_ws) if target_ws else ""
+    if target_ws:
+        sheet_rows_prompt = get_sheet_prompt(target_ws)
+    else:
+        # Si es AUTO-DETECT, inyectar el mapa consolidado de TODAS las hojas
+        sheet_rows_prompt = get_all_sheets_combined_prompt()
+        
     base_instruction = base_instruction.replace("{SHEET_ROWS}", sheet_rows_prompt)
     
     sheet_enforcement = ""
