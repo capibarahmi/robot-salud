@@ -132,6 +132,8 @@ DEPT_SYMBOLS = {
     "CDA": "SSR", "ARO": "SSR", "OBSTETRICIA": "SSR", "EMBARAZADAS": "SSR",
     "NEONATOLOGIA": "PNNA", "CIRUGIA PEDIATRICA": "PNNA", "PUERICULTURA": "PNNA",
     "GASTRO": "MEDICINA INTERNA (si existe) o GENERALES",
+    "ENDOCRINOLOGIA": "ENDOCRINO-METABOLICO", "ENDOCRINOLOGÍA": "ENDOCRINO-METABOLICO",
+    "ENDOCRINO": "ENDOCRINO-METABOLICO",
 }
 
 # Diccionario de correcciones manuales para items específicos que la IA suele fallar

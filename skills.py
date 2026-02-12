@@ -20,6 +20,14 @@ Columnas del formulario:
 5. SEXO (F/M, marcado con "X")  6. TIPO CONSULTA (P=Primera, S=Sucesiva, marcado con "X")
 7. TELÉFONO  8. DIRECCIÓN  9. DIAGNÓSTICO (texto manuscrito)
 
+📄 CABECERA DEL REPORTE:
+- SERVICIO: (Top right) Indica el departamento (ej: Endocrinologia, Pediatria). ÚSALO para auto-detectar la hoja destino.
+- REGISTRO MPPS: Datos de control, ignóralos.
+
+🚫 REGLA DE PRIVACIDAD (PII):
+- NO extraigas nombres, apellidos ni números de historia en el JSON final. 
+- Solo use esa información para distinguir pacientes entre filas.
+
 ⚠️ CORRECCIÓN DE OCR EN PEDIATRÍA:
 Las edades se escriben con "a" (años) o "m" (meses). El OCR puede confundir:
 - "51" → "5a" = 5 años  |  "42" → "4a" = 4 años  |  "71" → "7a" = 7 años
