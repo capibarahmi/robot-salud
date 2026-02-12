@@ -112,23 +112,29 @@ Tu trabajo es recibir TEXTO con datos médicos y convertirlos en formato JSON pa
 
 🔤 REGLAS DE CONTEO:
 - Extrae números EXACTOS. NO inventes datos.
-- Si dice "Total General: 50", IGNÓRALO (es un total calculado)
+- Si dice "Total General: 50", IGNÓRALO (es un total calculado).
+
+🚫 REGLA DE PRIVACIDAD (PII):
+- NO extraigas nombres, apellidos ni números de historia en el JSON final. 
+- Solo use esa información para distinguir pacientes entre filas.
 
 RETORNO JSON OBLIGATORIO:
-{
-  "razonamiento": "Analizo [sección]. Extraigo [datos]. Mapeo a nombres técnicos.",
-  "destino": "[HOJA_ASIGNADA]",
-  "datos": [
-    {"actividad": "[NOMBRE_EXACTO_DE_FILA]", "valor": 19}
-  ]
-}
+Si el texto contiene datos de MÚLTIPLES HOJAS, debes retornar una LISTA de objetos JSON:
+[
+  {
+    "razonamiento": "Datos para [hoja1]",
+    "destino": "[HOJA1]",
+    "datos": [{"actividad": "[NOMBRE_EXACTO]", "valor": 10}]
+  },
+  {
+    "razonamiento": "Datos para [hoja2]",
+    "destino": "[HOJA2]",
+    "datos": [...]
+  }
+]
 
-⚠️ Si no hay datos:
-{
-  "razonamiento": "El texto no contiene datos relevantes para [hoja].",
-  "destino": "[HOJA_ASIGNADA]",
-  "datos": []
-}
+⚠️ Si solo hay una hoja, retorna un ÚNICO OBJETO (no lista).
+⚠️ Si no hay datos relevantes, retorna un objeto con datos vacíos.
 """
 
 AI_SKILLS = {

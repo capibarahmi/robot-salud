@@ -484,13 +484,23 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
     try:
         response = model.generate_content(messages)
         raw_text = response.text.strip()
-        match = re.search(r'({.*})', raw_text, re.DOTALL)
-        if match:
-            json_str = match.group(1)
-            return json.loads(json_str)
+        
+        # Intentar buscar lista de JSONs [{}, {}] o un solo JSON {}
+        match_list = re.search(r'(\[.*\])', raw_text, re.DOTALL)
+        match_obj = re.search(r'({.*})', raw_text, re.DOTALL)
+        
+        if match_list:
+            json_str = match_list.group(1)
+            parsed = json.loads(json_str)
+            return parsed if isinstance(parsed, list) else [parsed]
+        elif match_obj:
+            json_str = match_obj.group(1)
+            parsed = json.loads(json_str)
+            return [parsed] if isinstance(parsed, dict) else parsed
         else:
             clean_text = re.sub(r'```json\s*|\s*```', '', raw_text)
-            return json.loads(clean_text)
+            parsed = json.loads(clean_text)
+            return parsed if isinstance(parsed, list) else [parsed]
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
@@ -1079,7 +1089,7 @@ with col1:
                     st.session_state.texto_chat_history.append({"role": "user", "content": texto_input})
                     
                     with st.spinner(f"Analizando con {modelo_sel}..."):
-                        res = procesar_texto(
+                        res_list = procesar_texto(
                             texto_input,
                             model_id=modelo_sel,
                             target_ws=selected_ws,
@@ -1088,28 +1098,36 @@ with col1:
                             conversation_history=st.session_state.texto_chat_history[:-1]  # historial previo
                         )
                         
-                        if res:
-                            # Acumular datos si ya existen
-                            if st.session_state.texto_datos_acumulados and st.session_state.texto_datos_acumulados.get('destino') == res.get('destino'):
-                                # Merge: sumar valores de actividades iguales
-                                existing_data = {d['actividad']: d['valor'] for d in st.session_state.texto_datos_acumulados['datos']}
-                                for item in res['datos']:
-                                    act = item['actividad']
-                                    if act in existing_data:
-                                        existing_data[act] += item['valor']
-                                    else:
-                                        existing_data[act] = item['valor']
-                                st.session_state.texto_datos_acumulados['datos'] = [
-                                    {'actividad': k, 'valor': v} for k, v in existing_data.items()
-                                ]
-                                st.session_state.texto_datos_acumulados['razonamiento'] = res.get('razonamiento', '')
-                                msj_ia = f"✅ Datos acumulados. Ahora hay **{len(existing_data)}** conceptos para **{res['destino']}**."
-                            else:
-                                st.session_state.texto_datos_acumulados = res
-                                msj_ia = f"✅ Extraídos **{len(res['datos'])}** conceptos para **{res['destino']}**."
+                        if res_list:
+                            num_hojas = len(res_list)
+                            msj_ia = f"✅ He analizado el texto y detectado **{num_hojas}** hojas con datos.\n\n"
                             
-                            # Copiar a current_res para que el flujo de guardado funcione
-                            st.session_state['current_res'] = st.session_state.texto_datos_acumulados
+                            # Procesar cada hoja devuelta
+                            for res in res_list:
+                                if not res.get('datos'): continue
+                                
+                                # Acumular datos si ya existen para esta hoja en sesión
+                                if st.session_state.texto_datos_acumulados and st.session_state.texto_datos_acumulados.get('destino') == res.get('destino'):
+                                    # Merge: sumar valores de actividades iguales
+                                    existing_data = {d['actividad']: d['valor'] for d in st.session_state.texto_datos_acumulados['datos']}
+                                    for item in res['datos']:
+                                        act = item['actividad']
+                                        if act in existing_data:
+                                            existing_data[act] += item['valor']
+                                        else:
+                                            existing_data[act] = item['valor']
+                                    st.session_state.texto_datos_acumulados['datos'] = [
+                                        {'actividad': k, 'valor': v} for k, v in existing_data.items()
+                                    ]
+                                    msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos acumulados.\n"
+                                else:
+                                    # Por ahora, si hay múltiples, pondremos el último en texto_datos_acumulados 
+                                    st.session_state.texto_datos_acumulados = res 
+                                    msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos nuevos.\n"
+                                
+                                # Copiar a current_res para que el flujo de guardado funcione (el último prevalece en la vista principal)
+                                st.session_state['current_res'] = res
+                            
                             st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_ia})
                             st.rerun()
                         else:
