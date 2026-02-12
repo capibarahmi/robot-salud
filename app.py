@@ -8,7 +8,7 @@ import time
 import re
 import difflib
 from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL
-from sheet_maps import get_sheet_prompt
+from sheet_maps import get_sheet_prompt, SHEET_ALIASES
 from sync_generales import sync_generales
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
@@ -127,6 +127,11 @@ DEPT_SYMBOLS = {
     
     # ZOONOSIS
     "RABIA": "ZOONOSIS", "MORDEDURA": "ZOONOSIS",
+
+    # EXTRAS (Basado en análisis de historial de chat)
+    "CDA": "SSR", "ARO": "SSR", "OBSTETRICIA": "SSR", "EMBARAZADAS": "SSR",
+    "NEONATOLOGIA": "PNNA", "CIRUGIA PEDIATRICA": "PNNA", "PUERICULTURA": "PNNA",
+    "GASTRO": "MEDICINA INTERNA (si existe) o GENERALES",
 }
 
 # Diccionario de correcciones manuales para items específicos que la IA suele fallar
@@ -506,14 +511,20 @@ def guardar_datos_quirurgico(datos_json, semana):
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws_name = datos_json.get("destino")
         
-        # Normalización de destino (Fallback si la IA puso nombre de sección)
+        # Normalización de destino (Uso de SHEET_ALIASES de sheet_maps)
+        if ws_name:
+            ws_name_norm = str(ws_name).upper().strip()
+            if ws_name_norm in SHEET_ALIASES:
+                ws_name = SHEET_ALIASES[ws_name_norm]
+        
         if ws_name not in HOJAS_VALIDAS:
+            # Fallback por keywords si no está en alias ni es exacto
             norm_target = str(ws_name).upper()
-            if any(k in norm_target for k in ["ESCOLAR", "NIÑ", "LACTANTE", "ADOLESCENTE", "PUERICULTURA"]):
+            if any(k in norm_target for k in ["ESCOLAR", "NIÑ", "LACTANTE", "ADOLESCENTE", "PEDIAT"]):
                 ws_name = "PNNA"
             elif any(k in norm_target for k in ["GERIATRIA", "MAYOR"]):
                 ws_name = "ADULTOS MAYOR"
-            elif any(k in norm_target for k in ["MUJER", "SSR", "PLANIFICACION"]):
+            elif any(k in norm_target for k in ["MUJER", "SSR", "PLANIFICACION", "EMBARAZA"]):
                 ws_name = "SSR"
         
         if ws_name not in HOJAS_VALIDAS:

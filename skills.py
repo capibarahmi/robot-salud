@@ -1,5 +1,5 @@
 # --- CONFIGURACIÓN DE SKILLS (INSTRUCCIONES DE IA) ---
-from sheet_maps import get_sheet_prompt, DIAGNOSTICO_SISTEMA
+from sheet_maps import get_sheet_prompt, DIAGNOSTICO_SISTEMA, REGLAS_INASISTENCIA
 
 # =====================================================================
 # EPI_SKILL — Para procesar IMÁGENES de reportes manuscritos
@@ -24,6 +24,7 @@ Columnas del formulario:
 Las edades se escriben con "a" (años) o "m" (meses). El OCR puede confundir:
 - "51" → "5a" = 5 años  |  "42" → "4a" = 4 años  |  "71" → "7a" = 7 años
 - "31" → "3a" = 3 años  |  "101" → "10a" = 10 años  |  "81m" → "8m" = 8 meses
+Si ves más de 2 dígitos, REVISA si hay una "a" o "m" manuscrita pegada. Posiblemente sea una edad pediátrica.
 Si la hoja es PNNA, ASUME que todas las edades son NIÑOS (0-18 años).
 
 📊 PROCESO DE EXTRACCIÓN POR PACIENTE:
@@ -33,7 +34,7 @@ Si la hoja es PNNA, ASUME que todas las edades son NIÑOS (0-18 años).
 4. DIAGNÓSTICO → Sano/CNS → Sanos. Patología → Enfermos + Riesgo Biológico
 5. ESTADO NUTRICIONAL → Si se menciona: Normal, Exceso, Zona Crítica, etc.
 
-""" + DIAGNOSTICO_SISTEMA + """
+""" + DIAGNOSTICO_SISTEMA + REGLAS_INASISTENCIA + """
 
 {SHEET_ROWS}
 
@@ -97,7 +98,7 @@ Tu trabajo es recibir TEXTO con datos médicos y convertirlos en formato JSON pa
 🎯 REGLA DE ORO: Usa SIEMPRE el nombre EXACTO de la lista de filas.
 - NO uses nombres genéricos. Usa los nombres técnicos del Excel.
 
-""" + DIAGNOSTICO_SISTEMA + """
+""" + DIAGNOSTICO_SISTEMA + REGLAS_INASISTENCIA + """
 
 {SHEET_ROWS}
 

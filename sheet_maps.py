@@ -467,7 +467,26 @@ CLASIFICACIÓN DE EDAD PARA PNNA:
 
 IMPORTANTE: "a" = años, "m" = meses, "d" = días
 - "1a" = 1 año = 12 meses = LACTANTE MAYOR (NO preescolar)
+- Siempre revisa si una edad de 2 dígitos tiene "a" o "m" al final.
 """
+
+REGLAS_INASISTENCIA = """
+REGLA DE ASISTENCIA:
+- 🚫 EXCLUYE de los conteos estadísticos a cualquier paciente con notas: "No acudió", "No asistió", "Inasistencia", "N/A".
+- Estos registros NO generan consulta efectiva ni morbilidad.
+"""
+
+# Alias para mapeo de hojas según contexto usuario
+SHEET_ALIASES = {
+    "ARO": "SSR",
+    "CDA": "SSR",
+    "PRENATAL": "SSR",
+    "OBSTETRICIA": "SSR",
+    "GASTRO": "MEDICINA INTERNA (si existe) o GENERALES",
+    "NEONATOLOGIA": "PNNA",
+    "CIRUGIA PEDIATRICA": "PNNA",
+    "PUERICULTURA": "PNNA"
+}
 
 REGLAS_CONSULTA = """
 MAPEO TIPO DE CONSULTA (P = Primera, S = Sucesiva):
@@ -528,7 +547,14 @@ def get_sheet_prompt(sheet_name):
     # Buscar por nombre exacto o normalizado
     rows = ALL_SHEETS.get(sheet_name, [])
     if not rows:
-        # Buscar por nombre parcial (por encodings diferentes)
+        # 1. Buscar en Alias
+        target = SHEET_ALIASES.get(sheet_name.upper().strip())
+        if target:
+            rows = ALL_SHEETS.get(target, [])
+            sheet_name = target # Normalizar nombre
+            
+    if not rows:
+        # 2. Buscar por nombre parcial
         norm = sheet_name.upper().strip()
         for key, val in ALL_SHEETS.items():
             if key.upper().strip() == norm or norm in key.upper():
