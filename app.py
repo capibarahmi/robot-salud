@@ -7,7 +7,7 @@ import json
 import time
 import re
 import difflib
-from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL
+from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL, IDENTIFICACION_SKILL
 from sheet_maps import get_sheet_prompt, ALL_SHEETS, HOJAS_VALIDAS, get_all_sheets_combined_prompt
 from sync_generales import sync_generales
 
@@ -427,99 +427,111 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
 
 # --- 3.B EL CEREBRO IA (TEXTO DIRECTO) ---
 def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="TEXTO DIRECTO (Chat)", conversation_history=None):
-    """Procesa texto pegado por el usuario y extrae datos para Google Sheets."""
+    """Procesa texto pegado por el usuario usando un motor de DOS PASOS para máxima precisión."""
     model = genai.GenerativeModel(model_id)
+    all_final_results = []
     
-    lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:800]]) if known_activities else "No disponible"
-    
-    base_instruction = TEXTO_DIRECTO_SKILL
-    # Inyectar filas dinámicas de la hoja destino
-    if target_ws:
-        sheet_rows_prompt = get_sheet_prompt(target_ws)
+    # --- PASO 1: IDENTIFICACIÓN DE HOJAS ---
+    detected_sheets = []
+    if not target_ws:
+        st.info("🔍 Paso 1/2: Identificando departamentos médicos...")
+        id_instruction = IDENTIFICACION_SKILL.replace("{HOJAS_VALIDAS}", "\n".join([f"- {h}" for h in HOJAS_VALIDAS]))
+        id_messages = [id_instruction, f"TEXTO A ANALIZAR:\n{texto_usuario}"]
+        
+        try:
+            id_response = model.generate_content(id_messages)
+            raw_id = id_response.text.strip()
+            # Buscar lista JSON
+            match = re.search(r'(\[.*\])', raw_id, re.DOTALL)
+            if match:
+                detected_sheets = json.loads(match.group(1))
+                # Limpiar nombres de hojas para asegurar que existen
+                detected_sheets = [s for s in detected_sheets if s in HOJAS_VALIDAS]
+            else:
+                # Fallback manual por si falla el JSON
+                detected_sheets = [h for h in HOJAS_VALIDAS if h in raw_id]
+        except Exception as e:
+            st.error(f"Error en Paso 1 (Identificación): {e}")
+            # Fallback al modo antiguo si falla la identificación
+            detected_sheets = []
     else:
-        # Si es AUTO-DETECT, inyectar el mapa consolidado de TODAS las hojas
-        sheet_rows_prompt = get_all_sheets_combined_prompt()
-        
-    base_instruction = base_instruction.replace("{SHEET_ROWS}", sheet_rows_prompt)
-    
-    sheet_enforcement = ""
-    if target_ws:
-        sheet_enforcement = f"""
-    
-    🔒 HOJA ASIGNADA POR EL USUARIO: "{target_ws}"
-    ⚠️ OBLIGATORIO: Debes usar EXACTAMENTE esta hoja como "destino".
-    NO auto-detectes otra hoja. El usuario ya eligió "{target_ws}".
-    SOLO extrae datos que correspondan a "{target_ws}".
-    """
-    else:
-        sheet_enforcement = """
-    
-    🔍 MODO AUTO-DETECTAR: El usuario NO seleccionó hoja.
-    Detecta el departamento del texto y elige la hoja correcta.
-    """
-    
-    system_instruction = f"""
-    {base_instruction}
-    {sheet_enforcement}
-    
-    HOJAS TÉCNICAS VÁLIDAS EN GOOGLE SHEETS (Usa una de estas para 'destino'):
-    {", ".join(HOJAS_VALIDAS)}
-    
-    ESTRUCTURA DE FILAS DISPONIBLES EN {target_ws if target_ws else 'la hoja detectada'}:
-    {lista_actividades_str}
-    
-    CONTEXTO ACTUAL:
-    - Hoja Asignada: {target_ws if target_ws else 'Auto-detectar'}
-    - Sistema: {skill_name}
-    """
-    
-    # Construir el contenido del mensaje
-    messages = [system_instruction]
-    
-    # Si hay historial de conversación, incluirlo
-    if conversation_history:
-        history_text = "\n\nHISTORIAL DE CONVERSACIÓN PREVIO:\n"
-        for msg in conversation_history:
-            role = "USUARIO" if msg['role'] == 'user' else "ASISTENTE"
-            history_text += f"{role}: {msg['content']}\n"
-        messages[0] += history_text
-    
-    messages.append(f"\n\nDATOS DEL USUARIO:\n{texto_usuario}")
-    
-    try:
-        response = model.generate_content(messages)
-        raw_text = response.text.strip()
-        
-        # Intentar buscar lista de JSONs [{}, {}] o un solo JSON {}
-        match_list = re.search(r'(\[.*\])', raw_text, re.DOTALL)
-        match_obj = re.search(r'({.*})', raw_text, re.DOTALL)
-        
-        if match_list:
-            json_str = match_list.group(1)
-            parsed = json.loads(json_str)
-            return parsed if isinstance(parsed, list) else [parsed]
-        elif match_obj:
-            json_str = match_obj.group(1)
-            parsed = json.loads(json_str)
-            return [parsed] if isinstance(parsed, dict) else parsed
+        detected_sheets = [target_ws]
+
+    if not detected_sheets:
+        st.warning("⚠️ No se detectaron departamentos específicos. Reintentando con visión global...")
+        detected_sheets = [None] # Forzar un intento global
+
+    # --- PASO 2: EXTRACCIÓN ENFOCADA (POR CADA HOJA) ---
+    total_steps = len(detected_sheets)
+    for i, current_sheet in enumerate(detected_sheets):
+        if current_sheet:
+            st.info(f"📊 Paso 2/2: Extrayendo datos técnicos para **{current_sheet}** ({i+1}/{total_steps})...")
         else:
-            clean_text = re.sub(r'```json\s*|\s*```', '', raw_text)
-            parsed = json.loads(clean_text)
-            return parsed if isinstance(parsed, list) else [parsed]
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
-            st.warning("🔄 **Límite de cuota alcanzado. Rotando API Key automáticamente...**")
-            st.session_state['current_key_index'] += 1
-            configure_genai()
-            return procesar_texto(texto_usuario, model_id, target_ws, known_activities, skill_name, conversation_history)
-        
-        if "429" in error_msg:
-            st.error("🚨 **Límite de Quota Excedido (Error 429)**")
-            st.info("💡 **Solución**: Agrega una API Key adicional en la barra lateral o cambia el modelo.")
+            st.info("📊 Paso 2/2: Extrayendo datos (Modo Global)...")
+            
+        # Preparar prompt enfocado
+        base_instruction = TEXTO_DIRECTO_SKILL
+        if current_sheet:
+            sheet_rows_prompt = get_sheet_prompt(current_sheet)
+            sheet_enforcement = f"\n🔒 ENFOQUE EXCLUSIVO: Estás extrayendo datos ÚNICAMENTE para la hoja '{current_sheet}'."
         else:
-            st.error(f"Error en {model_id}: {e}")
-        return None
+            sheet_rows_prompt = get_all_sheets_combined_prompt()
+            sheet_enforcement = ""
+
+        # Inyectar filas
+        instruction = base_instruction.replace("{SHEET_ROWS}", sheet_rows_prompt)
+        
+        system_instruction = f"""
+        {instruction}
+        {sheet_enforcement}
+        
+        CONTEXTO ACTUAL:
+        - Hoja Objetivo: {current_sheet if current_sheet else 'Auto-detectar'}
+        - Sistema: {skill_name}
+        """
+        
+        # Construir mensajes
+        messages = [system_instruction]
+        if conversation_history:
+            history_text = "\n\nHISTORIAL DE CONVERSACIÓN PREVIO:\n"
+            for msg in conversation_history:
+                role = "USUARIO" if msg['role'] == 'user' else "ASISTENTE"
+                history_text += f"{role}: {msg['content']}\n"
+            messages[0] += history_text
+        
+        messages.append(f"\n\nDATOS DEL USUARIO:\n{texto_usuario}")
+        
+        try:
+            response = model.generate_content(messages)
+            raw_text = response.text.strip()
+            
+            # Parsing JSON
+            match_list = re.search(r'(\[.*\])', raw_text, re.DOTALL)
+            match_obj = re.search(r'({.*})', raw_text, re.DOTALL)
+            
+            parsed_data = None
+            if match_list:
+                parsed_data = json.loads(match_list.group(1))
+            elif match_obj:
+                parsed_data = json.loads(match_obj.group(1))
+            else:
+                clean_text = re.sub(r'```json\s*|\s*```', '', raw_text)
+                parsed_data = json.loads(clean_text)
+            
+            if isinstance(parsed_data, list):
+                all_final_results.extend(parsed_data)
+            else:
+                all_final_results.append(parsed_data)
+                
+            # Pequeña pausa para evitar rate limit si hay muchas hojas
+            if total_steps > 1:
+                time.sleep(1)
+                
+        except Exception as e:
+            st.error(f"Error extrayendo {current_sheet}: {e}")
+            continue
+
+    return all_final_results
 
 # --- 4. LÓGICA QUIRÚRGICA DE GUARDADO ---
 def guardar_datos_quirurgico(datos_json, semana):

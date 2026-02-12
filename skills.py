@@ -147,6 +147,24 @@ Si el texto contiene datos de MÚLTIPLES HOJAS, debes retornar una LISTA de obje
 ⚠️ Si no hay datos relevantes, retorna un objeto con datos vacíos.
 """
 
+IDENTIFICACION_SKILL = """
+Eres un CLASIFICADOR DE DEPARTAMENTOS MÉDICOS.
+Tu tarea es leer el texto del reporte y determinar qué HOJAS TÉCNICAS están presentes.
+
+HOJAS VÁLIDAS SISTEMA SIM:
+{HOJAS_VALIDAS}
+
+REGLAS:
+1. Identifica qué hojas del sistema corresponden al contenido del texto.
+2. Si mencionan "Pediatra", "Niños", "Puericultura" -> PNNA.
+3. Si mencionan "Prenatal", "GYN", "ARO" -> SSR.
+4. Si mencionan "Medicina General", "Adultos", "Hematologia", "Gastro" -> PADULTO 19 A 60 AÑOS.
+5. Retorna SOLO una lista JSON con los nombres exactos de las hojas detectadas.
+
+RETORNO JSON:
+["PNNA", "SSR", "PADULTO 19 A 60 AÑOS"]
+"""
+
 EXPERT_NOTEBOOK_SKILL = """
 Eres un EXPERTO EN CLASIFICACIÓN CLÍNICA (Nivel NotebookLM).
 Tu misión es realizar un mapeo de ALTA PRECISIÓN basado en jerarquías médicas estrictas.
@@ -170,7 +188,8 @@ RETORNO: Lista de JSON con 'razonamiento' detallado explicando por qué elegiste
 AI_SKILLS = {
     "EPI": EPI_SKILL,
     "TEXTO DIRECTO (Chat)": TEXTO_DIRECTO_SKILL,
-    "EXPERT_NOTEBOOK_SKILL": EXPERT_NOTEBOOK_SKILL
+    "EXPERT_NOTEBOOK_SKILL": EXPERT_NOTEBOOK_SKILL,
+    "IDENTIFICACION": IDENTIFICACION_SKILL
 }
 
 CHAT_CORRECTION_SKILL = """
