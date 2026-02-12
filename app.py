@@ -8,6 +8,8 @@ import time
 import re
 import difflib
 from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL
+from sheet_maps import get_sheet_prompt
+from sync_generales import sync_generales
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
 @st.cache_resource
@@ -286,9 +288,9 @@ def get_worksheet_activities(ws_name):
         current_group = ""   # Nivel 2: Sub-bloque (Riesgo, Diagnóstico, etc.)
         
         # Palabras que suelen definir una SECCIÓN PRINCIPAL
-        KEYWORDS_SECCION = ["atención al", "programa de", "atención en", "atención integral", "atención médica"]
+        KEYWORDS_SECCION = ["atención al", "programa de", "atención en", "atención integral", "atención médica", "actividad /establecimiento"]
         # Palabras que suelen definir un SUB-GRUPO
-        KEYWORDS_GRUPO = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
+        KEYWORDS_GRUPO = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación"]
         # Items que SIEMPRE son hojas (leafs)
         items_leafs = ["MASCULINO", "FEMENINO", "NIÑO", "NIÑA", "TOTAL", "SÍ", "NO", "S/D"]
 
@@ -336,6 +338,9 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
     
     # Seleccionar la instrucción según el skill
     base_instruction = AI_SKILLS.get(skill_name, AI_SKILLS["EPI (Individual)"])
+    # Inyectar filas dinámicas de la hoja destino
+    sheet_rows_prompt = get_sheet_prompt(target_ws) if target_ws else ""
+    base_instruction = base_instruction.replace("{SHEET_ROWS}", sheet_rows_prompt)
     
     # Incluir instrucciones del usuario si existen
     user_instructions_block = ""
@@ -421,6 +426,9 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
     lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:800]]) if known_activities else "No disponible"
     
     base_instruction = TEXTO_DIRECTO_SKILL
+    # Inyectar filas dinámicas de la hoja destino
+    sheet_rows_prompt = get_sheet_prompt(target_ws) if target_ws else ""
+    base_instruction = base_instruction.replace("{SHEET_ROWS}", sheet_rows_prompt)
     
     sheet_enforcement = ""
     if target_ws:
@@ -534,9 +542,9 @@ def guardar_datos_quirurgico(datos_json, semana):
         c_sec = ""
         c_grp = ""
         # Palabras que definen una SECCIÓN o ENCABEZADO (Debe ser muy específico)
-        KEYWORDS_SECCION = ["atención al", "programa de", "atención en", "atención integral", "atención médica"]
+        KEYWORDS_SECCION = ["atención al", "programa de", "atención en", "atención integral", "atención médica", "actividad /establecimiento"]
         # Palabras que definen un SUB-GRUPO
-        KEYWORDS_GRUPO = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación", "enf."]
+        KEYWORDS_GRUPO = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación"]
         # Items que NO son encabezados aunque tengan palabras clave (Exclusiones)
         EXCLUDE_HEADER = ["MASCULINO", "FEMENINO", "SANO", "ENFERMO", "NORMAL", "DÉFICIT", "ZONA CRÍTICA", "LEVE", "MODERADA", "GRAVE"]
 
@@ -886,6 +894,27 @@ with st.sidebar:
     except Exception as e:
         st.error(f"❌ Error de conexión: {e}")
         st.info("💡 Asegúrate que el correo del robot tenga permiso de EDITOR en tu Excel.")
+
+    # 4. Sincronización Global
+    st.markdown("---")
+    st.subheader("🔄 Consolidación")
+    if st.button("📊 Sincronizar GENERALES", help="Suma los totales de todas las hojas de programa y actualiza la hoja GENERALES."):
+        with st.spinner("Sincronizando totales..."):
+            try:
+                # El objeto 'sh' ya debería estar disponible si la conexión fue exitosa
+                res = sync_generales(sh)
+                if res["actualizados"]:
+                    st.success(f"✅ Se actualizaron {len(res['actualizados'])} categorías.")
+                    with st.expander("Ver detalles"):
+                        for a in res["actualizados"]:
+                            st.write(f"- {a}")
+                if res["errores"]:
+                    st.warning(f"⚠️ Hubo {len(res['errores'])} advertencias.")
+                    with st.expander("Ver advertencias"):
+                        for e in res["errores"]:
+                            st.write(f"- {e}")
+            except Exception as e:
+                st.error(f"Error en sincronización: {e}")
 
     st.markdown("---")
     st.subheader("⚙️ Configuración de Carga")
