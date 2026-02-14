@@ -339,7 +339,7 @@ def get_worksheet_activities(ws_name):
         return []
 
 # --- 3. EL CEREBRO IA ---
-def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="EPI (Individual)", user_context=""):
+def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="EPI (Individual)", user_context="", retry_count=0):
     model = genai.GenerativeModel(model_id)
     
     lista_actividades_str = "\n".join([f"- {a}" for a in known_activities[:800]]) if known_activities else "No disponible"
@@ -411,12 +411,18 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
             return json.loads(clean_text)
     except Exception as e:
         error_msg = str(e)
-        if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
-            st.warning("🔄 **Límite de cuota alcanzado. Rotando API Key automáticamente...**")
+        if ("429" in error_msg or "quota" in error_msg.lower()) and len(st.session_state['api_key_pool']) > 1:
+             # BREAK LOOP
+            if retry_count >= len(st.session_state['api_key_pool']) + 1:
+                st.error("❌ Se probaron todas las llaves y siguen fallando. Intenta más tarde.")
+                return None
+            
+            st.warning(f"🔄 **Límite de cuota (Intento {retry_count+1}). Rotando llave...**")
+            time.sleep(2)
             st.session_state['current_key_index'] += 1
             configure_genai()
             # Reintentar una vez con la nueva llave
-            return procesar_imagen(imagen_bytes, model_id, target_ws, known_activities, skill_name)
+            return procesar_imagen(imagen_bytes, model_id, target_ws, known_activities, skill_name, user_context, retry_count=retry_count+1)
         
         if "429" in error_msg:
             st.error("🚨 **Límite de Quota Excedido (Error 429)**")
@@ -427,7 +433,7 @@ def procesar_imagen(imagen_bytes, model_id='gemini-2.0-flash', target_ws=None, k
         return None
 
 # --- 3.B EL CEREBRO IA (TEXTO DIRECTO) ---
-def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="TEXTO DIRECTO (Chat)", conversation_history=None):
+def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, known_activities=None, skill_name="TEXTO DIRECTO (Chat)", conversation_history=None, retry_count=0):
     """Procesa texto pegado por el usuario usando un motor de DOS PASOS para máxima precisión."""
     model = genai.GenerativeModel(model_id)
     all_final_results = []
@@ -467,11 +473,19 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                 detected_sheets = [h for h in HOJAS_VALIDAS if h in norm_text]
         except Exception as e:
             error_msg = str(e)
-            if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
-                st.warning("🔄 **Límite en Paso 1. Rotando API Key...**")
+            if ("429" in error_msg or "quota" in error_msg.lower()) and len(st.session_state['api_key_pool']) > 1:
+                # BREAK LOOP: Si ya rotamos demasiadas veces
+                if retry_count >= len(st.session_state['api_key_pool']) + 1:
+                    st.error("❌ Se agotaron todas las API Keys disponibles. Por favor espera unos minutos.")
+                    return []
+                
+                wait_retry = 5 # Esperar 5s antes de reintentar con nueva key
+                st.warning(f"🔄 **Límite en Paso 1 (Intento {retry_count+1}). Rotando llave en {wait_retry}s...**")
+                time.sleep(wait_retry)
+                
                 st.session_state['current_key_index'] += 1
                 configure_genai()
-                return procesar_texto(texto_usuario, model_id, target_ws, known_activities, skill_name, conversation_history)
+                return procesar_texto(texto_usuario, model_id, target_ws, known_activities, skill_name, conversation_history, retry_count=retry_count+1)
             
             st.error(f"Error en Paso 1 (Identificación): {e}")
             # Fallback al modo antiguo si falla la identificación
