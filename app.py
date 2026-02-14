@@ -1361,6 +1361,9 @@ if 'current_res' in st.session_state:
     # --- SELECTOR DE RESULTADOS MULTI-HOJA ---
     if st.session_state.get('texto_multi_res') and len(st.session_state.texto_multi_res) > 1:
         multi_list = st.session_state.texto_multi_res
+        # CRÍTICO: Definir nombres_hojas antes de insertar
+        nombres_hojas = [f"{i+1}. {r['destino']} ({len(r['datos'])} conceptos)" for i, r in enumerate(multi_list)]
+        
         # Opción para "Ver Resumen General"
         nombres_hojas.insert(0, "📊 VER TODO (Resumen General)")
         
