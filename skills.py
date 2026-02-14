@@ -121,7 +121,8 @@ Tu trabajo es recibir TEXTO con datos médicos y convertirlos en formato JSON pa
 {SHEET_ROWS}
 
 🔤 REGLAS DE CONTEO:
-- Extrae números EXACTOS. NO inventes datos.
+- Extrae números EXACTOS. NO inventes datos. 
+- ⚠️ REGLA DE VALIDACIÓN: Si ves un total (ej: "Nefrología: 5") pero los detalles sumados dan otro número (ej: 1 + 2 = 3), PRIORIZA la suma de los detalles. Los totales de NotebookLM pueden ser erróneos.
 - Si dice "Total General: 50", IGNÓRALO (es un total calculado).
 
 🚫 REGLA DE PRIVACIDAD (PII):
@@ -210,7 +211,7 @@ REGLAS DE PROCESAMIENTO:
 RETORNO JSON OBLIGATORIO (Lista de objetos):
 [
   {
-    "razonamiento": "Importación directa de NotebookLM para [HOJA]",
+    "razonamiento": "Importación de NotebookLM para [HOJA]. Nota: Validado que los sub-items coinciden con el total o se priorizaron los detalles.",
     "destino": "[HOJA]",
     "datos": [{"actividad": "[NOMBRE_EXACTO]", "valor": 10}]
   }
