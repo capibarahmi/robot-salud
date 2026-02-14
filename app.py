@@ -444,12 +444,26 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
             # Buscar lista JSON
             match = re.search(r'(\[.*\])', raw_id, re.DOTALL)
             if match:
-                detected_sheets = json.loads(match.group(1).replace("'", '"')) # Asegurar comillas dobles
-                # FILTRO CRÍTICO: SOLO hojas que existan en el Excel
-                detected_sheets = [s for s in detected_sheets if s in HOJAS_VALIDAS]
+                # FILTRO MEJORADO: Buscar coincidencias parciales o exactas
+                detected_sheets = []
+                # Normalizar lista de IA
+                ia_sheets = [str(s).upper().strip() for s in json.loads(match.group(1).replace("'", '"'))]
+                
+                # 1. Búsqueda exacta
+                for hoja in HOJAS_VALIDAS:
+                    if hoja in ia_sheets:
+                        detected_sheets.append(hoja)
+                
+                # 2. Búsqueda parcial (Si IA devuelve "HOJA PNNA" o "PNNA - SKILL")
+                if not detected_sheets:
+                    for s_ia in ia_sheets:
+                        for hoja in HOJAS_VALIDAS:
+                            if hoja in s_ia: # Ej: "PNNA" in "HOJA PNNA"
+                                if hoja not in detected_sheets: detected_sheets.append(hoja)
             else:
-                # Fallback manual ultra-estricto
-                detected_sheets = [h for h in HOJAS_VALIDAS if h.upper() in raw_id.upper()]
+                # Fallback manual estricto pero robusto
+                norm_text = raw_id.upper()
+                detected_sheets = [h for h in HOJAS_VALIDAS if h in norm_text]
         except Exception as e:
             error_msg = str(e)
             if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
