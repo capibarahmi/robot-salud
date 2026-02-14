@@ -64,13 +64,13 @@ except Exception as e:
 
 # --- 2. LISTA DE HOJAS Y MAPEO DE DEPARTAMENTOS ---
 HOJAS_VALIDAS = [
-    "PNNA", "PADULTO 19 A 60 AÐOS", "ADULTOS MAYOR", "PSALUD RESPIRATORIA", 
+    "PNNA", "PADULTO 19 A 60 AÑOS", "ADULTOS MAYOR", "PSALUD RESPIRATORIA", 
     "ITS-HIV-SIDA", "SANGRE SEGURA", "PREVENCION CANCER CUELLO UTERIN", 
-    "PROMOCIËN DE SALUD", "ENDOCRINO-METABOLICO", "CARDIOVASCULAR", 
-    "HEREDOMETABËLICAS", "SALUD BUCAL", "SALUD MENTAL", "SSR", 
-    "VISITAS Y ABORDAJES", "SALUD RENAL", "NUTRICIËN", 
+    "PROMOCIÓN DE SALUD", "ENDOCRINO-METABOLICO", "CARDIOVASCULAR", 
+    "HEREDOMETABÓLICAS", "SALUD BUCAL", "SALUD MENTAL", "SSR", 
+    "VISITAS Y ABORDAJES", "SALUD RENAL", "NUTRICIÓN", 
     # "PREVEN ACCD Y HECHOS VIOLENTOS" -> Corregido a nombre corto si necesario, pero mantenemos compatibilidad
-    "PREVEN ACCD Y HECHOS VIOLENTOS", "DERMATOLOG═A SANITARIA", 
+    "PREVEN ACCD Y HECHOS VIOLENTOS", "DERMATOLOGÍA SANITARIA", 
     "MUSCULOESQUELETICAS", "ZOONOSIS"
 ]
 
@@ -593,73 +593,69 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
         
         messages.append(f"\n\nDATOS DEL USUARIO:\n{texto_usuario}")
         
-        try:
-            response = model.generate_content(messages)
-            raw_text = response.text.strip()
-            
-            # Parsing JSON
-            match_list = re.search(r'(\[.*\])', raw_text, re.DOTALL)
-            match_obj = re.search(r'({.*})', raw_text, re.DOTALL)
-            
-            parsed_data = None
-            if match_list:
-                parsed_data = json.loads(match_list.group(1))
-            elif match_obj:
-                parsed_data = json.loads(match_obj.group(1))
-            else:
-                clean_text = re.sub(r'```json\s*|\s*```', '', raw_text)
-                parsed_data = json.loads(clean_text)
-            
-            if isinstance(parsed_data, list):
-                all_final_results.extend(parsed_data)
-            else:
-                all_final_results.append(parsed_data)
+        sheet_success = False
+        last_error = None
+        
+        # Intentar con CADA llave del pool antes de rendirse
+        num_keys = len(st.session_state['api_key_pool'])
+        for attempt in range(num_keys):
+            try:
+                response = model.generate_content(messages)
+                raw_text = response.text.strip()
                 
-            # Pequeña pausa para evitar rate limit si hay muchas hojas
-            if total_steps > 1:
-                time.sleep(2) # Aumentar a 2 segundos por precaución
+                # Parsing JSON (usando el mismo bloque robusto)
+                match_list = re.search(r'(\[.*\])', raw_text, re.DOTALL)
+                match_obj = re.search(r'({.*})', raw_text, re.DOTALL)
                 
-        except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg and len(st.session_state['api_key_pool']) > 1:
-                st.warning(f"🔄 **Límite en {current_sheet}. Rotando y reintentando...**")
-                st.session_state['current_key_index'] += 1
-                configure_genai()
-                # Reintentar SOLO esta hoja llamando de nuevo al modelo
-                model = genai.GenerativeModel(model_id) # Refrescar modelo con nueva key
+                parsed_data = None
+                if match_list: parsed_data = json.loads(match_list.group(1))
+                elif match_obj: parsed_data = json.loads(match_obj.group(1))
+                else: parsed_data = json.loads(re.sub(r'```json\s*|\s*```', '', raw_text))
+                
+                if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
+                else: all_final_results.append(parsed_data)
+                
+                sheet_success = True
+                break # Éxito: saltar a la siguiente hoja
+                
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                if "429" in error_msg and num_keys > 1:
+                    st.toast(f"⏳ Límite en llave #{st.session_state['current_key_index'] % num_keys + 1}. Rotando...", icon="🔄")
+                    st.session_state['current_key_index'] += 1
+                    configure_genai()
+                    model = genai.GenerativeModel(model_id) # Refrescar con nueva key
+                    time.sleep(1) # Pausa mínima para no saturar la nueva key
+                    continue
+                else:
+                    # Si no es 429 o solo hay una llave, dejar que el flujo de reintento con espera lo maneje abajo
+                    break
+
+        if not sheet_success:
+            # Si todas las llaves fallaron por 429, aplicar Backoff con espera real
+            err_str = str(last_error)
+            if "429" in err_str or "quota" in err_str.lower():
+                wait_time = extract_retry_delay(err_str)
+                st.warning(f"⚠️ Todas las llaves agotadas para **{current_sheet}**. Esperando {wait_time:.1f}s...")
+                time.sleep(wait_time)
+                
+                # Reintento final con la llave actual (que debería haber rotado)
                 try:
                     response = model.generate_content(messages)
                     raw_text = response.text.strip()
                     parsed_data = json.loads(re.search(r'({.*}|\[.*\])', raw_text, re.DOTALL).group(1))
-                    
                     if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
                     else: all_final_results.append(parsed_data)
-                    # BREAK SUCCESSFUL RETRY
-                except Exception as e:
-                    # Si falla, intentar una vez más con delay MUY largo (Backoff)
-                    err_str = str(e)
-                    if "429" in err_str or "quota" in err_str.lower():
-                        wait_time = extract_retry_delay(err_str)
-                        st.warning(f"⚠️ Cuota Google excedida en {current_sheet}. Pausando {wait_time:.1f}s y rotando llave...")
-                        time.sleep(wait_time)
-                        
-                        if len(st.session_state['api_key_pool']) > 1:
-                            st.session_state['current_key_index'] += 1
-                            configure_genai()
-                        
-                        try:
-                             response = model.generate_content(messages)
-                             raw_text = response.text.strip()
-                             parsed_data = json.loads(re.search(r'({.*}|\[.*\])', raw_text, re.DOTALL).group(1))
-                             if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
-                             else: all_final_results.append(parsed_data)
-                        except Exception as e2:
-                             st.error(f"❌ Falla definitiva en {current_sheet}: {e2}")
-                    else:
-                        st.error(f"Falla crítica en {current_sheet}: {e}")
+                    sheet_success = True
+                except Exception as e_final:
+                    st.error(f"❌ Falla definitiva en {current_sheet}: {e_final}")
             else:
-                st.error(f"Error extrayendo {current_sheet}: {e}")
-            continue
+                st.error(f"❌ Error crítico en {current_sheet}: {last_error}")
+
+        # Pausa entre hojas para evitar "Spiking" (puntas de tráfico)
+        if total_steps > 1:
+            time.sleep(2)
 
     return all_final_results
 
