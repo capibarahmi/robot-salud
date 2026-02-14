@@ -449,7 +449,15 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
     
     # --- PASO 1: IDENTIFICACIÓN DE HOJAS ---
     detected_sheets = []
-    if not target_ws:
+    
+    # NUEVO: Bypass para NotebookLM (usar REGEX para ser instantáneo y ahorrar cuota)
+    if skill_name == "IMPORTAR DESDE NOTEBOOKLM" and not target_ws:
+        headers = re.findall(r'### \*\*HOJA: (.*?)\*\*', texto_usuario)
+        detected_sheets = [h.strip().upper() for h in headers if h.strip().upper() in HOJAS_VALIDAS]
+        if detected_sheets:
+            st.success(f"📌 NotebookLM detectado: {len(detected_sheets)} hojas extraídas automáticamente.")
+
+    if not target_ws and not detected_sheets:
         st.info("🔍 Paso 1/2: Identificando departamentos médicos...")
         id_instruction = IDENTIFICACION_SKILL.replace("{HOJAS_VALIDAS}", "\n".join([f"- {h}" for h in HOJAS_VALIDAS]))
         id_messages = [id_instruction, f"TEXTO A ANALIZAR:\n{texto_usuario}"]
@@ -534,7 +542,7 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
             st.info("📊 Paso 2/2: Extrayendo datos (Modo Global)...")
             
         # Preparar prompt enfocado
-        base_instruction = TEXTO_DIRECTO_SKILL
+        base_instruction = AI_SKILLS.get(skill_name, TEXTO_DIRECTO_SKILL)
         if current_sheet:
             sheet_rows_prompt = get_sheet_prompt(current_sheet)
             sheet_enforcement = f"\n🔒 ENFOQUE EXCLUSIVO: Estás extrayendo datos ÚNICAMENTE para la hoja '{current_sheet}'."
@@ -1217,12 +1225,13 @@ with col1:
             for msg in st.session_state.texto_chat_history:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
-        
-        # Input de texto directo
+        st.subheader("📝 Pegar Reporte Estructurado")
+        if skill_sel == "IMPORTAR DESDE NOTEBOOKLM":
+            st.info("💡 **Modo NotebookLM**: Copia el reporte limpio (### **HOJA: ...**) de NotebookLM y el sistema lo mapeará directamente a las celdas.")
         texto_input = st.text_area(
             "📋 Pega aquí los datos médicos:",
             placeholder="Ej: HOJA PNNA - Lactantes: Masculino 19, Femenino 31, Sanos 18, Enfermos 16...\n\nTambién puedes pegar datos que extraigas de NotebookLM u otra fuente.",
-            height=150,
+            height=300,
             key="texto_directo_input"
         )
         

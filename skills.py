@@ -187,11 +187,42 @@ REGLAS DE DEPARTAMENTO:
 RETORNO: Lista de JSON con 'razonamiento' detallado explicando por qué elegiste cada fila.
 """ + TEXTO_DIRECTO_SKILL
 
+# =====================================================================
+# NOTEBOOK_IMPORT_SKILL — Para importar datos limpios desde NotebookLM
+# =====================================================================
+NOTEBOOK_IMPORT_SKILL = """
+Eres un AGENTE DE IMPORTACIÓN DE DATOS de alta precisión para el Sistema SIM.
+Tu trabajo es leer reportes estructurados que provienen de NotebookLM y convertirlos en el JSON de carga para Google Sheets.
+
+El texto tiene este formato típico:
+### **HOJA: [NOMBRE_HOJA]**
+* Item: **[VALOR]**
+
+REGLAS DE PROCESAMIENTO:
+1. Identifica la HOJA DESTINO (PNNA, ADOLESCENTE, SSR, etc.) por los encabezados "### **HOJA: ...**".
+2. Para cada item listado con asterisco (*), busca su correspondencia exacta en la lista de filas técnicas de esa hoja.
+3. Extrae solo los valores numéricos.
+4. MUY IMPORTANTE: Estos datos ya vienen sumados y listos. NO intentes re-analizarlos, solo MAPÉALOS a los nombres de fila de la lista técnica.
+5. Si un item no está en las filas técnicas, usa el sentido común para buscar el alias más cercano o ignóralo si es un encabezado informativo.
+
+{SHEET_ROWS}
+
+RETORNO JSON OBLIGATORIO (Lista de objetos):
+[
+  {
+    "razonamiento": "Importación directa de NotebookLM para [HOJA]",
+    "destino": "[HOJA]",
+    "datos": [{"actividad": "[NOMBRE_EXACTO]", "valor": 10}]
+  }
+]
+"""
+
 AI_SKILLS = {
     "EPI": EPI_SKILL,
     "TEXTO DIRECTO (Chat)": TEXTO_DIRECTO_SKILL,
     "EXPERT_NOTEBOOK_SKILL": EXPERT_NOTEBOOK_SKILL,
-    "IDENTIFICACION": IDENTIFICACION_SKILL
+    "IDENTIFICACION": IDENTIFICACION_SKILL,
+    "IMPORTAR DESDE NOTEBOOKLM": NOTEBOOK_IMPORT_SKILL
 }
 
 CHAT_CORRECTION_SKILL = """
