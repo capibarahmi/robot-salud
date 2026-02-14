@@ -75,7 +75,7 @@ HOJAS_VALIDAS = [
     "ITS-HIV-SIDA", "SANGRE SEGURA", "PREVENCION CANCER CUELLO UTERIN", 
     "PROMOCIÓN DE SALUD", "ENDOCRINO-METABOLICO", "CARDIOVASCULAR", 
     "HEREDOMETABÓLICAS", "SALUD BUCAL", "SALUD MENTAL", "SSR", 
-    "VISITAS Y ABORDAJES", "SALUD RENAL", "NUTRICIÓN", 
+    "VISITAS Y ABORDAJES", "SALUD RENAL", "NUTRICIÓN", "GENERALES",
     # "PREVEN ACCD Y HECHOS VIOLENTOS" -> Corregido a nombre corto si necesario, pero mantenemos compatibilidad
     "PREVEN ACCD Y HECHOS VIOLENTOS", "DERMATOLOGÍA SANITARIA", 
     "MUSCULOESQUELETICAS", "ZOONOSIS"
@@ -672,6 +672,10 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
         # Forzar recarga del client si hay problema
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws_name = datos_json.get("destino")
+        
+        # PROTECCIÓN ESPECIAL: GENERALES (Solo suma automática, no tocar manual)
+        if str(ws_name).upper().strip() == "GENERALES":
+            return False, "⚠️ La hoja 'GENERALES' es automática y no permite escritura manual. ¡Usa el botón [Sincronizar GENERALES]!", []
         
         ws_name_input = str(ws_name).strip()
         ws_name_norm = norm_sheet(ws_name_input)

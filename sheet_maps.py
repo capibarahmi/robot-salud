@@ -357,6 +357,8 @@ ALL_SHEETS = {
     "Consultas Primera Masculinos", "Consultas Primera Femeninos",
     "2.Total Sucesivas",
     "Consultas Sucesivas Masculinos", "Consultas Sucesivas Femeninos",
+    "1. Total Consultas en Instituciones Educativas",
+    "Masculinos", "Femeninos",
     "Causas",
     "Glomerulonefritis", "Nefropatía Obstructiva", "Nefroangioesclerosis",
     "Poliquistosis Renal", "Nefropatía Diabética",
