@@ -452,8 +452,28 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
     
     # NUEVO: Bypass para NotebookLM (usar REGEX para ser instantáneo y ahorrar cuota)
     if skill_name == "IMPORTAR DESDE NOTEBOOKLM" and not target_ws:
-        headers = re.findall(r'### \*\*HOJA: (.*?)\*\*', texto_usuario)
-        detected_sheets = [h.strip().upper() for h in headers if h.strip().upper() in HOJAS_VALIDAS]
+        # Regex MUCHO MÁS FLEXIBLE: 
+        # 1. Mira si empieza con # o *
+        # 2. Busca la palabra HOJA:
+        # 3. Captura todo hasta el final de la línea o paréntesis
+        headers = re.findall(r'(?:###|#|\*)\s*(?:\*\*)?HOJA:\s*(.*?)(?:\*\*|\(|:|\n|$)', texto_usuario, re.IGNORECASE)
+        detected_sheets = []
+        for h in headers:
+            h_clean = h.strip().upper()
+            if not h_clean: continue
+            
+            # Búsqueda directa o en alias
+            if h_clean in HOJAS_VALIDAS:
+                detected_sheets.append(h_clean)
+            elif h_clean in SHEET_ALIASES:
+                detected_sheets.append(SHEET_ALIASES[h_clean])
+            else:
+                # Búsqueda parcial por si NotebookLM añade texto extra
+                for s_valid in HOJAS_VALIDAS:
+                    if s_valid in h_clean:
+                        detected_sheets.append(s_valid)
+                        break
+        
         if detected_sheets:
             st.success(f"📌 NotebookLM detectado: {len(detected_sheets)} hojas extraídas automáticamente.")
 
@@ -1247,7 +1267,7 @@ with col1:
                             model_id=modelo_sel,
                             target_ws=selected_ws,
                             known_activities=activities_context,
-                            skill_name="TEXTO DIRECTO (Chat)",
+                            skill_name=skill_sel, # <--- USAR EL SELECCIONADO NO ESTÁTICO
                             conversation_history=st.session_state.texto_chat_history[:-1]
                         )
                         if res_list:
