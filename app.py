@@ -1410,7 +1410,7 @@ if 'current_res' in st.session_state:
                 all_data_combined.append(d)
         
         st.dataframe(pd.DataFrame(all_data_combined), use_container_width=True)
-        return # Salir para no mostrar editor individual
+        st.stop() # Salir para no mostrar editor individual
 
     # VISTA: EDITOR INDIVIDUAL (Índices > 0)
     # Ajustar índice porque insertamos "Ver Todo" al principio
@@ -1421,7 +1421,7 @@ if 'current_res' in st.session_state:
     else:
         res = st.session_state.get('current_res')
 
-    if not res: return 
+    if not res: st.stop()
     st.success(f"📍 Mostrando datos de: **{res['destino']}**")
     
     # Crear un DataFrame para edición
