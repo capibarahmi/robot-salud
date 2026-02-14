@@ -160,6 +160,8 @@ REGLAS CRÍTICAS:
 3. **PEQUEÑAS MENCIONES CUENTAN**: Si al final del texto hay un párrafo de "Prenatal" o "ARO", debes incluir "SSR".
 4. **EDADES**: 0-18 -> PNNA. 19-59 -> PADULTO 19 A 60 AÑOS. 60+ -> ADULTOS MAYOR.
 5. **ODONTOLOGÍA**: Si ves "Odontólogo" o "Salud Bucal" -> SALUD BUCAL.
+6. **ESPECIALIDADES GENERALES**: Dermatología, Nefrología, Hematología, Oncología, Gastro -> "MORBILIDAD DE CONSULTA EXTERNA".
+7. **ENFERMERIA**: Censo, Inyecctología, Curas -> "GENERALES".
 
 RETORNO JSON OBLIGATORIO (Solo los nombres exactos de la lista):
 ["PNNA", "SSR", "PADULTO 19 A 60 AÑOS"]
