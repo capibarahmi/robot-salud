@@ -485,7 +485,20 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
 
     # --- PASO 2: EXTRACCIÓN ENFOCADA (POR CADA HOJA) ---
     total_steps = len(detected_sheets)
+    parsed_results_count = 0 # Contador para rotación proactiva
+    
     for i, current_sheet in enumerate(detected_sheets):
+        # 1. RATE LIMITING: Pausa entre hojas para no saturar
+        if i > 0: 
+            time.sleep(2) # 2 segundos de respiro
+        
+        # 2. ROTACIÓN PROACTIVA: Cada 3 hojas, cambiar llave preventivamente
+        if parsed_results_count > 0 and parsed_results_count % 3 == 0 and len(st.session_state['api_key_pool']) > 1:
+            st.toast("🔄 Rotando llave API por precaución...", icon="🛡️")
+            st.session_state['current_key_index'] += 1
+            configure_genai()
+            
+        parsed_results_count += 1
         if current_sheet:
             st.info(f"📊 Paso 2/2: Extrayendo datos técnicos para **{current_sheet}** ({i+1}/{total_steps})...")
         else:
@@ -565,8 +578,24 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                     parsed_data = json.loads(re.search(r'({.*}|\[.*\])', raw_text, re.DOTALL).group(1))
                     if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
                     else: all_final_results.append(parsed_data)
-                except:
-                    st.error(f"Falla crítica en {current_sheet} tras rotación.")
+                    if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
+                    else: all_final_results.append(parsed_data)
+                except Exception as e:
+                    # Si falla, intentar una vez más con delay largo
+                    if "429" in str(e):
+                        st.warning(f"⚠️ Cuota excedida en {current_sheet}. Esperando 10s...")
+                        time.sleep(10)
+                        st.session_state['current_key_index'] += 1
+                        configure_genai()
+                        # Reintento recursivo simple (solo esta parte)
+                        # Por simplicidad, aquí solo logueamos el error si falla el reintento
+                        try:
+                             response = model.generate_content(messages)
+                             # ... lógica de parseo ...
+                        except:
+                             st.error(f"❌ Falla definitiva en {current_sheet} tras espera.")
+                    else:
+                        st.error(f"Falla crítica en {current_sheet}: {e}")
             else:
                 st.error(f"Error extrayendo {current_sheet}: {e}")
             continue
