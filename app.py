@@ -7,6 +7,7 @@ import json
 import time
 import re
 import difflib
+import unicodedata
 from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL, IDENTIFICACION_SKILL
 from sheet_maps import get_sheet_prompt, ALL_SHEETS, HOJAS_VALIDAS, get_all_sheets_combined_prompt, SHEET_ALIASES
 from sync_generales import sync_generales
@@ -21,6 +22,12 @@ def extract_retry_delay(error_msg):
         except:
             pass
     return 35 # Default conservador
+
+def norm_sheet(s):
+    """Normalización universal de texto (quita acentos, espicacios y especiales)."""
+    if not s: return ""
+    s = "".join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn')
+    return re.sub(r'[^A-Z0-9]', '', s.upper())
 @st.cache_resource
 def get_gspread_client():
     try:
@@ -666,12 +673,6 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws_name = datos_json.get("destino")
         
-        # NORMALIZACIÓN UNIVERSAL (Evita errores de acentos, espacios o UTF-8)
-        def norm_sheet(s):
-            if not s: return ""
-            s = "".join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn')
-            return re.sub(r'[^A-Z0-9]', '', s.upper())
-
         ws_name_input = str(ws_name).strip()
         ws_name_norm = norm_sheet(ws_name_input)
         
