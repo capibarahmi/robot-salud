@@ -588,18 +588,16 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                 st.warning(f"🔄 **Límite en {current_sheet}. Rotando y reintentando...**")
                 st.session_state['current_key_index'] += 1
                 configure_genai()
-                # Reintentar SOLO esta hoja llamando de nuevo al modelo (recursividad local no es ideal, pero funciona)
+                # Reintentar SOLO esta hoja llamando de nuevo al modelo
                 model = genai.GenerativeModel(model_id) # Refrescar modelo con nueva key
-                # Re-ejecutar este paso del bucle (una vez)
                 try:
                     response = model.generate_content(messages)
-                    # (repetir lógica de parseo simplificada)
                     raw_text = response.text.strip()
                     parsed_data = json.loads(re.search(r'({.*}|\[.*\])', raw_text, re.DOTALL).group(1))
+                    
                     if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
                     else: all_final_results.append(parsed_data)
-                    if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
-                    else: all_final_results.append(parsed_data)
+                    # BREAK SUCCESSFUL RETRY
                 except Exception as e:
                     # Si falla, intentar una vez más con delay MUY largo (Backoff)
                     err_str = str(e)
@@ -608,13 +606,11 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                         st.warning(f"⚠️ Cuota Google excedida en {current_sheet}. Pausando {wait_time}s y rotando llave...")
                         time.sleep(wait_time)
                         
-                        # Rotar llave si es posible
                         if len(st.session_state['api_key_pool']) > 1:
                             st.session_state['current_key_index'] += 1
                             configure_genai()
                         
                         try:
-                             # Reintento único
                              response = model.generate_content(messages)
                              raw_text = response.text.strip()
                              parsed_data = json.loads(re.search(r'({.*}|\[.*\])', raw_text, re.DOTALL).group(1))
@@ -1118,10 +1114,10 @@ with st.sidebar:
 
     semana_sel = st.selectbox("Semana de Carga", ["Semana 1", "Semana 2", "Semana 3", "Semana 4", "Semana 5"])
     
-    if 'last_update_log' in st.session_state:
-        if st.button("⏪ DESHACER CARGA"):
+    if st.session_state.get('global_undo_log'):
+        if st.button("⏪ DESHACER CARGA", use_container_width=True, help="Revierte la última carga sumada o reemplazada."):
             if deshacer_actualizacion():
-                st.success("Revertido.")
+                st.success("✅ Carga revertida exitosamente.")
                 st.rerun()
 
     st.markdown("---")
