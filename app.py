@@ -1010,14 +1010,29 @@ with st.sidebar:
             if nueva_key and nueva_key not in st.session_state['api_key_pool']:
                 st.session_state['api_key_pool'].append(nueva_key)
                 st.success("Llave agregada correctamente.")
+                # Forzar recarga inmediata para que el sistema reconozca el pool actualizado
+                configure_genai() 
+                time.sleep(1)
+                st.rerun()
             elif nueva_key in st.session_state['api_key_pool']:
                 st.warning("Esta llave ya está en la lista.")
         
         st.write(f"Total de llaves: **{len(st.session_state['api_key_pool'])}**")
+        
+        # Botón de Prueba de Rotación
+        if len(st.session_state['api_key_pool']) > 1:
+            if st.button("🔄 Probar Rotación (Cambiar Llave)"):
+                st.session_state['current_key_index'] += 1
+                configure_genai()
+                st.toast("Llave rotada manualmente.", icon="🔀")
+                st.rerun()
+
         if st.button("🗑️ Limpiar todas las llaves"):
             st.session_state['api_key_pool'] = []
             if "GEMINI_API_KEY" in st.secrets:
                 st.session_state['api_key_pool'].append(st.secrets["GEMINI_API_KEY"])
+            st.session_state['current_key_index'] = 0
+            configure_genai()
             st.rerun()
 
     # Mostrar diagnóstico de la key activa actual
