@@ -12,6 +12,15 @@ from sheet_maps import get_sheet_prompt, ALL_SHEETS, HOJAS_VALIDAS, get_all_shee
 from sync_generales import sync_generales
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
+def extract_retry_delay(error_msg):
+    """Extrae el tiempo de espera sugerido por Google (ej: 'retry in 28.63s')"""
+    match = re.search(r'retry in ([\d\.]+)', str(error_msg).lower())
+    if match:
+        try:
+            return float(match.group(1)) + 2 # Margen de seguridad
+        except:
+            pass
+    return 35 # Default conservador
 @st.cache_resource
 def get_gspread_client():
     try:
@@ -602,8 +611,8 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                     # Si falla, intentar una vez más con delay MUY largo (Backoff)
                     err_str = str(e)
                     if "429" in err_str or "quota" in err_str.lower():
-                        wait_time = 25 # 25 segundos reales
-                        st.warning(f"⚠️ Cuota Google excedida en {current_sheet}. Pausando {wait_time}s y rotando llave...")
+                        wait_time = extract_retry_delay(err_str)
+                        st.warning(f"⚠️ Cuota Google excedida en {current_sheet}. Pausando {wait_time:.1f}s y rotando llave...")
                         time.sleep(wait_time)
                         
                         if len(st.session_state['api_key_pool']) > 1:
@@ -1122,15 +1131,14 @@ with st.sidebar:
 
     st.markdown("---")
     with st.expander("🚨 ¿Sigue el error de Quota?"):
+        st.warning("**IMPORTANTE**: Si tus llaves son del mismo usuario/proyecto, **comparten la misma cuota**. Google las bloquea a la vez.")
         st.write("""
-        Si cambiaste de cuenta y sigue el error, es porque creaste la clave en el **mismo proyecto**.
-        
         **Pasos para el Reset Real:**
         1. Ve a [Google AI Studio](https://aistudio.google.com/).
         2. Arriba a la izquierda, clic en el nombre del Proyecto -> **Create new project**.
-        3. Ponle un nombre nuevo (ej: 'Robot SIM 2').
+        3. Ponle un nombre nuevo (ej: 'Proyecto Secundario').
         4. Clic en **Get API Key** -> Selecciona el nuevo proyecto.
-        5. Copia esa clave y pégala en los **Secrets** de Streamlit.
+        5. Copia esa clave y pégala aquí. Al ser de un proyecto distinto, tendrá su propia cuota independiente.
         """)
 
 st.title("🦦 Auditoría Médica | SIM")
