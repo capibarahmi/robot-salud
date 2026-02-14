@@ -687,7 +687,7 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
                 ws_name = "SSR"
         
         if ws_name not in HOJAS_VALIDAS:
-            return False, f"Hoja '{ws_name}' no reconocida en la lista de permitidas."
+            return False, f"Hoja '{ws_name}' no reconocida en la lista de permitidas.", []
             
         ws = sheet.worksheet(ws_name)
         
@@ -702,7 +702,7 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
                 break
         
         if col_index == -1:
-            return False, f"No se encontró la columna '{semana}' en la hoja {ws_name}."
+            return False, f"No se encontró la columna '{semana}' en la hoja {ws_name}.", []
 
         # 2. Reconstruir jerarquía de la hoja para match exacto
         conceptos_hoja = ws.col_values(1)
@@ -914,7 +914,14 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
 
                 range_name = rowcol_to_a1(row_index, col_index)
                 updates.append({'range': range_name, 'values': [[total_val]]})
-                log_cambios.append({'ws': ws_name, 'range': range_name, 'act': act_buscada, 'val_orig': valor_num, 'val_total': total_val})
+                log_cambios.append({
+                    'ws': ws_name, 
+                    'range': range_name, 
+                    'act': act_buscada, 
+                    'val_prev': existing_val, # Guardar valor REAL previo
+                    'val_orig': valor_num, 
+                    'val_total': total_val
+                })
             else:
                 errores_mapeo.append(act_raw)
         
@@ -941,15 +948,8 @@ def deshacer_actualizacion():
                 if ws_name not in changes_by_ws:
                     changes_by_ws[ws_name] = []
                 
-                # RESTAURAR VALOR ORIGINAL: (Total - Incremento)
-                # Si era texto o vacío, restauramos "" si original era 0/vacío
-                try:
-                    val_restored = float(change['val_total']) - float(change['val_orig'])
-                    # Si el resultado es 0.0, poner "" para limpiar la celda
-                    if val_restored == 0: val_restored = ""
-                except:
-                    val_restored = ""
-                    
+                # RESTAURAR VALOR PREVIO EXACTO (Solución definitiva de raíz)
+                val_restored = change.get('val_prev', "")
                 changes_by_ws[ws_name].append({'range': change['range'], 'values': [[val_restored]]})
             
             for ws_name, updates in changes_by_ws.items():
@@ -1449,8 +1449,9 @@ if 'batch_results' in st.session_state and st.session_state['batch_results']:
                         'destino': sheet_name,
                         'datos': edited_df.to_dict('records')
                     }
-                    exito, msj = guardar_datos_quirurgico(res_to_save, semana_sel)
+                    exito, msj, log_parcial = guardar_datos_quirurgico(res_to_save, semana_sel)
                     if exito:
+                        st.session_state.setdefault('global_undo_log', []).extend(log_parcial)
                         st.success(msj)
                     else:
                         st.error(msj)
