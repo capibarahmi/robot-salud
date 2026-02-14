@@ -828,33 +828,43 @@ def guardar_datos_quirurgico(datos_json, semana):
         
         if updates:
             ws.batch_update(updates)
-            st.session_state['last_update_log'] = log_cambios
+            # st.session_state['last_update_log'] = log_cambios # REMOVED: return log instead
             if errores_mapeo:
                 st.session_state['mapeo_warnings'] = errores_mapeo
-            return True, f"✅ Éxito: {len(updates)} conceptos guardados."
+            return True, f"✅ Éxito: {len(updates)} conceptos guardados.", log_cambios
             
-        return False, "⚠️ No se encontraron filas que coincidan."
+        return False, "⚠️ No se encontraron filas que coincidan.", []
         
     except Exception as e:
-        return False, f"❌ Error crítico de conexión: {str(e)}"
+        return False, f"❌ Error crítico de conexión: {str(e)}", []
 
 def deshacer_actualizacion():
-    if 'last_update_log' in st.session_state:
+    if 'global_undo_log' in st.session_state and st.session_state['global_undo_log']:
         try:
             sheet = client.open_by_key(SPREADSHEET_ID)
             # Agrupar por hoja para eficiencia
             changes_by_ws = {}
-            for change in st.session_state['last_update_log']:
+            for change in st.session_state['global_undo_log']:
                 ws_name = change['ws']
                 if ws_name not in changes_by_ws:
                     changes_by_ws[ws_name] = []
-                changes_by_ws[ws_name].append({'range': change['range'], 'values': [[""]]})
+                
+                # RESTAURAR VALOR ORIGINAL: (Total - Incremento)
+                # Si era texto o vacío, restauramos "" si original era 0/vacío
+                try:
+                    val_restored = float(change['val_total']) - float(change['val_orig'])
+                    # Si el resultado es 0.0, poner "" para limpiar la celda
+                    if val_restored == 0: val_restored = ""
+                except:
+                    val_restored = ""
+                    
+                changes_by_ws[ws_name].append({'range': change['range'], 'values': [[val_restored]]})
             
             for ws_name, updates in changes_by_ws.items():
                 ws = sheet.worksheet(ws_name)
                 ws.batch_update(updates)
                 
-            del st.session_state['last_update_log']
+            st.session_state['global_undo_log'] = [] # Limpiar tras deshacer
             return True
         except Exception as e:
             st.error(f"Error al deshacer: {e}")
@@ -1343,6 +1353,18 @@ if 'batch_results' in st.session_state and st.session_state['batch_results']:
         st.session_state.pop('batch_results', None)
         st.rerun()
 
+# -----------------
+# BOTÓN DE DESHACER (Visible si hay cambios recientes)
+if st.session_state.get('global_undo_log'):
+    st.markdown("⚠️ **¿Cometiste un error en la carga anterior?**")
+    if st.button("↩️ DESHACER ÚLTIMA CARGA (Restar valores sumados)", type="primary"):
+        with st.spinner("Deshaciendo cambios..."):
+            if deshacer_actualizacion():
+                st.success("✅ Carga revertida correctamente. Los valores se han restado.")
+                time.sleep(1.5)
+                st.rerun()
+# -----------------
+
 if img:
     if st.button("🚀 ANALIZAR REPORTE", type="primary"):
         with st.spinner(f"Escaneando con {modelo_sel}..."):
@@ -1414,8 +1436,9 @@ if 'current_res' in st.session_state:
                 # Actualizar el item antes de enviar
                 res_item['destino'] = final_dest
                 
-                exito, msj = guardar_datos_quirurgico(res_item, semana_sel)
+                exito, msj, log_parcial = guardar_datos_quirurgico(res_item, semana_sel)
                 if exito:
+                    st.session_state.setdefault('global_undo_log', []).extend(log_parcial)
                     log_exitos.append(f"✅ {res_item['destino']}")
                 else:
                     log_errores.append(f"❌ {res_item['destino']}: {msj}")
@@ -1489,8 +1512,10 @@ if 'current_res' in st.session_state:
             with st.spinner("Guardando..."):
                 # Asegurarse de usar los datos editados
                 res_to_save = st.session_state['current_res']
-                exito, msj = guardar_datos_quirurgico(res_to_save, semana_sel)
+                exito, msj, log_parcial = guardar_datos_quirurgico(res_to_save, semana_sel)
                 if exito:
+                    # Guardar log para deshacer
+                    st.session_state.setdefault('global_undo_log', []).extend(log_parcial)
                     st.success(msj)
                     if 'mapeo_warnings' in st.session_state:
                         with st.expander("⚠️ Algunos ítems no se encontraron"):
