@@ -1144,6 +1144,10 @@ with col1:
                             st.session_state.texto_multi_res = [r for r in res_list if r.get('datos')]
                             st.session_state.texto_multi_res_index = 0
                             
+                            # CRÍTICO: Establecer el primer resultado como "actual" para que el renderizador (L1342) lo muestre
+                            if st.session_state.texto_multi_res:
+                                st.session_state['current_res'] = st.session_state.texto_multi_res[0]
+                            
                             msj_ia = f"✅ Detectadas **{len(st.session_state.texto_multi_res)}** hojas.\n"
                             for res in st.session_state.texto_multi_res:
                                 msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos.\n"
