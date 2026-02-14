@@ -1347,24 +1347,81 @@ if 'current_res' in st.session_state:
     # --- SELECTOR DE RESULTADOS MULTI-HOJA ---
     if st.session_state.get('texto_multi_res') and len(st.session_state.texto_multi_res) > 1:
         multi_list = st.session_state.texto_multi_res
-        nombres_hojas = [f"{i+1}. {r['destino']} ({len(r['datos'])} conceptos)" for i, r in enumerate(multi_list)]
+        # Opción para "Ver Resumen General"
+        nombres_hojas.insert(0, "📊 VER TODO (Resumen General)")
         
         st.markdown(f"### 📑 Se detectaron {len(multi_list)} hojas en el reporte")
-        sel_idx = st.selectbox(
-            "Selecciona la hoja que deseas revisar y guardar:",
-            range(len(multi_list)),
-            format_func=lambda x: nombres_hojas[x],
-            index=st.session_state.get('texto_multi_res_index', 0),
-            key="multi_res_selector"
-        )
         
-        # Actualizar el resultado actual basado en la selección
-        if sel_idx != st.session_state.get('texto_multi_res_index'):
-            st.session_state.texto_multi_res_index = sel_idx
-            st.session_state['current_res'] = multi_list[sel_idx]
-            st.rerun()
+        col_sel, col_acc = st.columns([3, 1])
+        with col_sel:
+            sel_idx = st.selectbox(
+                "Selecciona la hoja que deseas revisar:",
+                range(len(multi_list) + 1),
+                format_func=lambda x: nombres_hojas[x],
+                index=st.session_state.get('texto_multi_res_index', 0),
+                key="multi_res_selector"
+            )
+        
+        with col_acc:
+            if st.button("💾 GUARDAR TODO", type="primary", use_container_width=True):
+                st.session_state['save_all_trigger'] = True
+                st.rerun()
 
-    res = st.session_state['current_res']
+        # Actualizar índice
+        if sel_idx != st.session_state.get('texto_multi_res_index'):
+             st.session_state.texto_multi_res_index = sel_idx
+             st.rerun()
+
+    # LÓGICA DE GUARDADO MASIVO
+    if st.session_state.get('save_all_trigger'):
+        with st.spinner("Guardando todas las hojas detectadas..."):
+            log_errores = []
+            log_exitos = []
+            progress_bar = st.progress(0)
+            
+            for i, res_item in enumerate(st.session_state.texto_multi_res):
+                exito, msj = guardar_datos_quirurgico(res_item, semana_sel)
+                if exito:
+                    log_exitos.append(f"✅ {res_item['destino']}")
+                else:
+                    log_errores.append(f"❌ {res_item['destino']}: {msj}")
+                progress_bar.progress((i + 1) / len(st.session_state.texto_multi_res))
+            
+            progress_bar.empty()
+            st.session_state['save_all_trigger'] = False
+            
+            if log_exitos:
+                st.success(f"Guardado exitoso: {', '.join(log_exitos)}")
+            if log_errores:
+                st.error(f"Errores al guardar: {'; '.join(log_errores)}")
+            if not log_errores:
+                st.balloons()
+                # Opcional: Limpiar si todo salió bien
+                # del st.session_state['texto_multi_res']
+                # st.rerun()
+
+    # VISTA: RESUMEN GENERAL (Índice 0)
+    if st.session_state.get('texto_multi_res_index') == 0 and st.session_state.get('texto_multi_res'):
+        st.info("Vista previa de toda la extracción. Puedes guardar todo arriba o ir hoja por hoja.")
+        all_data_combined = []
+        for r in st.session_state.texto_multi_res:
+            for d in r['datos']:
+                d['Origen'] = r['destino'] # Añadir etiqueta de hoja
+                all_data_combined.append(d)
+        
+        st.dataframe(pd.DataFrame(all_data_combined), use_container_width=True)
+        return # Salir para no mostrar editor individual
+
+    # VISTA: EDITOR INDIVIDUAL (Índices > 0)
+    # Ajustar índice porque insertamos "Ver Todo" al principio
+    real_idx = st.session_state.get('texto_multi_res_index', 1) - 1
+    if real_idx >= 0 and real_idx < len(st.session_state.texto_multi_res):
+        res = st.session_state.texto_multi_res[real_idx]
+        st.session_state['current_res'] = res # Sincronizar para compatibilidad
+    else:
+        res = st.session_state.get('current_res')
+
+    if not res: return 
     st.success(f"📍 Mostrando datos de: **{res['destino']}**")
     
     # Crear un DataFrame para edición
