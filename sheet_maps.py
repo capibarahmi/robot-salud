@@ -1,6 +1,8 @@
 # sheet_maps.py — Diccionario completo de mapeo para TODAS las hojas de Google Sheets
 # Fuente: all_sheets_structure.json (dump directo del spreadsheet)
 import json
+import unicodedata
+import re
 
 # =====================================================================
 # ESTRUCTURA COMPLETA DE TODAS LAS HOJAS (filas de la columna A)
@@ -617,19 +619,28 @@ def get_sheet_prompt(sheet_name):
     # Buscar por nombre exacto o normalizado
     rows = ALL_SHEETS.get(sheet_name, [])
     if not rows:
-        # 1. Buscar en Alias
-        target = SHEET_ALIASES.get(sheet_name.upper().strip())
-        if target:
-            rows = ALL_SHEETS.get(target, [])
-            sheet_name = target # Normalizar nombre
-            
-    if not rows:
-        # 2. Buscar por nombre parcial
-        norm = sheet_name.upper().strip()
+        # NORMALIZACIÓN UNIVERSAL (Acentos, espacios, etc.)
+        def norm_sheet(s):
+            if not s: return ""
+            s = "".join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn')
+            return re.sub(r'[^A-Z0-9]', '', s.upper())
+        
+        target_norm = norm_sheet(sheet_name)
+        
+        # 1. Buscar en ALL_SHEETS con normalización
         for key, val in ALL_SHEETS.items():
-            if key.upper().strip() == norm or norm in key.upper():
+            if norm_sheet(key) == target_norm:
                 rows = val
+                sheet_name = key
                 break
+        
+        # 2. Buscar en Alias con normalización
+        if not rows:
+            for alias_key, target_h in SHEET_ALIASES.items():
+                if norm_sheet(alias_key) == target_norm:
+                    rows = ALL_SHEETS.get(target_h, [])
+                    sheet_name = target_h
+                    break
 
     if not rows:
         return f"⚠️ No se encontró estructura para la hoja '{sheet_name}'. Usa los nombres que veas en la imagen."

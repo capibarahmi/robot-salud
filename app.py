@@ -1329,24 +1329,21 @@ with col1:
                             conversation_history=st.session_state.texto_chat_history[:-1]
                         )
                         if res_list:
-                            # Nueva persistencia multi-hoja
+                            # Nueva persistencia multi-hoja (Solo resultados con datos)
                             st.session_state.texto_multi_res = [r for r in res_list if r.get('datos')]
                             st.session_state.texto_multi_res_index = 0
                             
-                            # CRÍTICO: Establecer el primer resultado como "actual" para que el renderizador (L1342) lo muestre
                             if st.session_state.texto_multi_res:
                                 st.session_state['current_res'] = st.session_state.texto_multi_res[0]
-                            
-                            msj_ia = f"✅ Detectadas **{len(st.session_state.texto_multi_res)}** hojas.\n"
-                            for res in st.session_state.texto_multi_res:
-                                msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos.\n"
-                            
-                            # Cargar la primera por defecto
-                            if st.session_state.texto_multi_res:
-                                st.session_state['current_res'] = st.session_state.texto_multi_res[0]
-
-                            st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_ia})
-                            st.rerun()
+                                
+                                msj_ia = f"✅ Detectadas **{len(st.session_state.texto_multi_res)}** hojas.\n"
+                                for res in st.session_state.texto_multi_res:
+                                    msj_ia += f"- 📍 **{res['destino']}**: {len(res['datos'])} conceptos.\n"
+                                
+                                st.session_state.texto_chat_history.append({"role": "assistant", "content": msj_ia})
+                                st.rerun()
+                            else:
+                                st.warning("⚠️ No se extrajeron datos numéricos de las hojas detectadas.")
 
         with col_experto:
             if st.button("🧠 CONSULTA EXPERTA", help="Usa NotebookLM para mapeo de precisión", use_container_width=True, disabled=not texto_input):
@@ -1363,12 +1360,16 @@ with col1:
                     if res_list:
                         st.session_state.texto_multi_res = [r for r in res_list if r.get('datos')]
                         st.session_state.texto_multi_res_index = 0
-                        st.session_state['current_res'] = st.session_state.texto_multi_res[0]
-                        st.session_state.texto_chat_history.append({
-                            "role": "assistant", 
-                            "content": f"🧠 **NotebookLM ha respondido.** He aplicado reglas expertas de clasificación para {len(st.session_state.texto_multi_res)} hojas."
-                        })
-                        st.rerun()
+                        
+                        if st.session_state.texto_multi_res:
+                            st.session_state['current_res'] = st.session_state.texto_multi_res[0]
+                            st.session_state.texto_chat_history.append({
+                                "role": "assistant", 
+                                "content": f"🧠 **NotebookLM ha respondido.** He aplicado reglas expertas de clasificación para {len(st.session_state.texto_multi_res)} hojas."
+                            })
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ NotebookLM no devolvió datos estructurados válidos para estas hojas.")
 
         with col_limpiar:
             if st.button("🗑️ Limpiar Chat", use_container_width=True):
