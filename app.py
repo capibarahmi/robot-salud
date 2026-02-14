@@ -485,16 +485,22 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
 
     # --- PASO 2: EXTRACCIÓN ENFOCADA (POR CADA HOJA) ---
     total_steps = len(detected_sheets)
-    parsed_results_count = 0 # Contador para rotación proactiva
+    parsed_results_count = 0 
     
+    # 0. MODO SEGURO (Check user preference)
+    safe_mode = st.session_state.get('safe_mode_active', False)
+    delay_time = 8 if safe_mode else 4 # Mucho más conservador (4s normal, 8s seguro)
+
+    st.write(f"ℹ️ Procesando con delay de {delay_time}s entre hojas para estabilidad...")
+
     for i, current_sheet in enumerate(detected_sheets):
-        # 1. RATE LIMITING: Pausa entre hojas para no saturar
+        # 1. RATE LIMITING RIGUROSO
         if i > 0: 
-            time.sleep(2) # 2 segundos de respiro
+            time.sleep(delay_time)
         
-        # 2. ROTACIÓN PROACTIVA: Cada 3 hojas, cambiar llave preventivamente
-        if parsed_results_count > 0 and parsed_results_count % 3 == 0 and len(st.session_state['api_key_pool']) > 1:
-            st.toast("🔄 Rotando llave API por precaución...", icon="🛡️")
+        # 2. ROTACIÓN PROACTIVA (Más frecuente si hay pool)
+        if len(st.session_state['api_key_pool']) > 1 and parsed_results_count > 0 and parsed_results_count % 2 == 0:
+            st.toast("🔄 Rotando llave API...", icon="🛡️")
             st.session_state['current_key_index'] += 1
             configure_genai()
             
@@ -581,19 +587,27 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
                     if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
                     else: all_final_results.append(parsed_data)
                 except Exception as e:
-                    # Si falla, intentar una vez más con delay largo
-                    if "429" in str(e):
-                        st.warning(f"⚠️ Cuota excedida en {current_sheet}. Esperando 10s...")
-                        time.sleep(10)
-                        st.session_state['current_key_index'] += 1
-                        configure_genai()
-                        # Reintento recursivo simple (solo esta parte)
-                        # Por simplicidad, aquí solo logueamos el error si falla el reintento
+                    # Si falla, intentar una vez más con delay MUY largo (Backoff)
+                    err_str = str(e)
+                    if "429" in err_str or "quota" in err_str.lower():
+                        wait_time = 25 # 25 segundos reales
+                        st.warning(f"⚠️ Cuota Google excedida en {current_sheet}. Pausando {wait_time}s y rotando llave...")
+                        time.sleep(wait_time)
+                        
+                        # Rotar llave si es posible
+                        if len(st.session_state['api_key_pool']) > 1:
+                            st.session_state['current_key_index'] += 1
+                            configure_genai()
+                        
                         try:
+                             # Reintento único
                              response = model.generate_content(messages)
-                             # ... lógica de parseo ...
-                        except:
-                             st.error(f"❌ Falla definitiva en {current_sheet} tras espera.")
+                             raw_text = response.text.strip()
+                             parsed_data = json.loads(re.search(r'({.*}|\[.*\])', raw_text, re.DOTALL).group(1))
+                             if isinstance(parsed_data, list): all_final_results.extend(parsed_data)
+                             else: all_final_results.append(parsed_data)
+                        except Exception as e2:
+                             st.error(f"❌ Falla definitiva en {current_sheet}: {e2}")
                     else:
                         st.error(f"Falla crítica en {current_sheet}: {e}")
             else:
@@ -1383,6 +1397,9 @@ if 'batch_results' in st.session_state and st.session_state['batch_results']:
     if st.button("🗑️ Limpiar Resultados en Lote"):
         st.session_state.pop('batch_results', None)
         st.rerun()
+
+    # Checkbox MODO LENTO
+    st.toggle("🐢 Modo Lento / Seguro (Usar si aparecen errores rojos)", key="safe_mode_active", help="Aumenta las pausas entre hojas a 8 segundos. Recomendado si tienes muchas hojas.")
 
     if st.toggle("Modo Sobrescritura (⚠️ Borrar valor anterior)", key="overwrite_mode_toggle", help="Si lo activas, el robot BORRARÁ lo que había en la celda y pondrá el valor nuevo. Si lo desactivas (por defecto), SUMARÁ."):
         st.session_state['overwrite_mode'] = True
