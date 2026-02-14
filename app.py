@@ -60,6 +60,7 @@ HOJAS_VALIDAS = [
     "PROMOCIËN DE SALUD", "ENDOCRINO-METABOLICO", "CARDIOVASCULAR", 
     "HEREDOMETABËLICAS", "SALUD BUCAL", "SALUD MENTAL", "SSR", 
     "VISITAS Y ABORDAJES", "SALUD RENAL", "NUTRICIËN", 
+    # "PREVEN ACCD Y HECHOS VIOLENTOS" -> Corregido a nombre corto si necesario, pero mantenemos compatibilidad
     "PREVEN ACCD Y HECHOS VIOLENTOS", "DERMATOLOG═A SANITARIA", 
     "MUSCULOESQUELETICAS", "ZOONOSIS"
 ]
@@ -573,7 +574,7 @@ def procesar_texto(texto_usuario, model_id='gemini-2.0-flash', target_ws=None, k
     return all_final_results
 
 # --- 4. LÓGICA QUIRÚRGICA DE GUARDADO ---
-def guardar_datos_quirurgico(datos_json, semana):
+def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
     try:
         # Forzar recarga del client si hay problema
         sheet = client.open_by_key(SPREADSHEET_ID)
@@ -802,11 +803,12 @@ def guardar_datos_quirurgico(datos_json, semana):
                     existing_val = current_col_values[row_index - 1]
                 
                 try:
-                    if existing_val and str(existing_val).strip():
-                        # Convertir a número y sumar
+                    if existing_val and str(existing_val).strip() and not overwrite:
+                        # Convertir a número y sumar (SOLO SI NO ES OVERWRITE)
                         existing_num = float(str(existing_val).replace(",", "."))
                         total_val = existing_num + valor_num
                     else:
+                        # Modo Sobrescritura o celda vacía: Usar el valor nuevo directamente
                         total_val = valor_num
                 except:
                     total_val = valor_num
@@ -1353,6 +1355,11 @@ if 'batch_results' in st.session_state and st.session_state['batch_results']:
         st.session_state.pop('batch_results', None)
         st.rerun()
 
+    if st.toggle("Modo Sobrescritura (⚠️ Borrar valor anterior)", key="overwrite_mode_toggle", help="Si lo activas, el robot BORRARÁ lo que había en la celda y pondrá el valor nuevo. Si lo desactivas (por defecto), SUMARÁ."):
+        st.session_state['overwrite_mode'] = True
+    else:
+        st.session_state['overwrite_mode'] = False
+
 # -----------------
 # BOTÓN DE DESHACER (Visible si hay cambios recientes)
 if st.session_state.get('global_undo_log'):
@@ -1436,7 +1443,9 @@ if 'current_res' in st.session_state:
                 # Actualizar el item antes de enviar
                 res_item['destino'] = final_dest
                 
-                exito, msj, log_parcial = guardar_datos_quirurgico(res_item, semana_sel)
+                # Pasar flag de overwrite
+                overwrite_active = st.session_state.get('overwrite_mode', False)
+                exito, msj, log_parcial = guardar_datos_quirurgico(res_item, semana_sel, overwrite=overwrite_active)
                 if exito:
                     st.session_state.setdefault('global_undo_log', []).extend(log_parcial)
                     log_exitos.append(f"✅ {res_item['destino']}")
@@ -1511,8 +1520,11 @@ if 'current_res' in st.session_state:
         if st.button(f"📤 GUARDAR EN {res['destino']}", type="primary", use_container_width=True):
             with st.spinner("Guardando..."):
                 # Asegurarse de usar los datos editados
+                # Asegurarse de usar los datos editados
                 res_to_save = st.session_state['current_res']
-                exito, msj, log_parcial = guardar_datos_quirurgico(res_to_save, semana_sel)
+                overwrite_active = st.session_state.get('overwrite_mode', False)
+                
+                exito, msj, log_parcial = guardar_datos_quirurgico(res_to_save, semana_sel, overwrite=overwrite_active)
                 if exito:
                     # Guardar log para deshacer
                     st.session_state.setdefault('global_undo_log', []).extend(log_parcial)
