@@ -8,7 +8,7 @@ import time
 import re
 import difflib
 from skills import AI_SKILLS, TEXTO_DIRECTO_SKILL, IDENTIFICACION_SKILL
-from sheet_maps import get_sheet_prompt, ALL_SHEETS, HOJAS_VALIDAS, get_all_sheets_combined_prompt
+from sheet_maps import get_sheet_prompt, ALL_SHEETS, HOJAS_VALIDAS, get_all_sheets_combined_prompt, SHEET_ALIASES
 from sync_generales import sync_generales
 
 # --- 1. CONFIGURACIÓN DE SEGURIDAD Y CONEXIÓN ---
