@@ -1397,6 +1397,23 @@ if 'current_res' in st.session_state:
             progress_bar = st.progress(0)
             
             for i, res_item in enumerate(st.session_state.texto_multi_res):
+                # NORMALIZACIÓN CRÍTICA ANTES DE GUARDAR
+                raw_dest = res_item.get('destino', '').strip().upper()
+                final_dest = raw_dest # Default
+                
+                # Intentar buscar en SHEET_ALIASES
+                if raw_dest in SHEET_ALIASES:
+                    final_dest = SHEET_ALIASES[raw_dest]
+                # Intentar buscar coincidencia parcial con HOJAS_VALIDAS
+                elif raw_dest not in HOJAS_VALIDAS:
+                     for v in HOJAS_VALIDAS:
+                         if v in raw_dest or raw_dest in v:
+                             final_dest = v
+                             break
+                
+                # Actualizar el item antes de enviar
+                res_item['destino'] = final_dest
+                
                 exito, msj = guardar_datos_quirurgico(res_item, semana_sel)
                 if exito:
                     log_exitos.append(f"✅ {res_item['destino']}")
