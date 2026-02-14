@@ -670,25 +670,45 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
         sheet = client.open_by_key(SPREADSHEET_ID)
         ws_name = datos_json.get("destino")
         
-        # Normalización de destino (Uso de SHEET_ALIASES de sheet_maps)
-        if ws_name:
-            ws_name_norm = str(ws_name).upper().strip()
-            if ws_name_norm in SHEET_ALIASES:
-                ws_name = SHEET_ALIASES[ws_name_norm]
+        # NORMALIZACIÓN UNIVERSAL (Evita errores de acentos, espacios o UTF-8)
+        def norm_sheet(s):
+            if not s: return ""
+            s = "".join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn')
+            return re.sub(r'[^A-Z0-9]', '', s.upper())
+
+        ws_name_input = str(ws_name).strip()
+        ws_name_norm = norm_sheet(ws_name_input)
         
-        if ws_name not in HOJAS_VALIDAS:
-            # Fallback por keywords si no está en alias ni es exacto
-            norm_target = str(ws_name).upper()
-            if any(k in norm_target for k in ["ESCOLAR", "NIÑ", "LACTANTE", "ADOLESCENTE", "PEDIAT"]):
-                ws_name = "PNNA"
-            elif any(k in norm_target for k in ["GERIATRIA", "MAYOR"]):
-                ws_name = "ADULTOS MAYOR"
-            elif any(k in norm_target for k in ["MUJER", "SSR", "PLANIFICACION", "EMBARAZA"]):
-                ws_name = "SSR"
+        # 1. Intentar match directo en HOJAS_VALIDAS (con normalización)
+        final_ws_name = None
+        for h_real in HOJAS_VALIDAS:
+            if norm_sheet(h_real) == ws_name_norm:
+                final_ws_name = h_real
+                break
         
-        if ws_name not in HOJAS_VALIDAS:
-            return False, f"Hoja '{ws_name}' no reconocida en la lista de permitidas.", []
+        # 2. Si no halla, buscar en SHEET_ALIASES
+        if not final_ws_name:
+            # Buscar el alias que normalizado coincida
+            for alias_key, target_h in SHEET_ALIASES.items():
+                if norm_sheet(alias_key) == ws_name_norm:
+                    final_ws_name = target_h
+                    break
+        
+        # 3. Fallback final por keywords
+        if not final_ws_name:
+            if any(k in ws_name_norm for k in ["ESCOLAR", "NINO", "LACTANTE", "ADOLESCENTE", "PEDIAT", "PNNA"]):
+                final_ws_name = "PNNA"
+            elif any(k in ws_name_norm for k in ["GERIATRIA", "ADULTOMAYOR"]):
+                final_ws_name = "ADULTOS MAYOR"
+            elif any(k in ws_name_norm for k in ["SSR", "OBSTETRI", "GINECO", "PLANIFICA"]):
+                final_ws_name = "SSR"
+            elif any(k in ws_name_norm for k in ["BUCAL", "ODONTO"]):
+                final_ws_name = "SALUD BUCAL"
+
+        if not final_ws_name:
+            return False, f"Hoja '{ws_name}' no reconocida. Verifica el nombre exacto.", []
             
+        ws_name = final_ws_name
         ws = sheet.worksheet(ws_name)
         
         # 1. Encontrar la columna de la semana
@@ -716,7 +736,9 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
         # Palabras que definen un SUB-GRUPO
         KEYWORDS_GRUPO = ["riesgo", "estado nutricional", "diagnóstico", "nivel educativo", "patología", "clasificación"]
         # Items que NO son encabezados aunque tengan palabras clave (Exclusiones)
-        EXCLUDE_HEADER = ["MASCULINO", "FEMENINO", "SANO", "ENFERMO", "NORMAL", "DÉFICIT", "ZONA CRÍTICA", "LEVE", "MODERADA", "GRAVE"]
+        EXCLUDE_HEADER = ["MASCULINO", "FEMENINO", "SANO", "ENFERMO", "NORMAL", "DÉFICIT", "ZONA CRÍTICA", "LEVE", "MODERADA", "GRAVE", "ENFERMOS", "A. ", "B. ", "C. ", "D. ", "E. "]
+        # NUEVO: Palabras que BLOQUEAN la escritura por ser fórmulas o totales (Letras negritas)
+        KEYWORDS_PROHIBIDOS = ["TOTAL", "SUBTOTAL", "RESUMEN", "GENERALES", "SUMADOR", "SUMATORIA", "(A+", "(1+", "TOTALES", "TOTAL DE", "RESUMEN TOTAL"]
 
         for idx, val in enumerate(conceptos_hoja):
             val_clean = str(val).strip()
@@ -857,13 +879,18 @@ def guardar_datos_quirurgico(datos_json, semana, overwrite=False):
                 norm_fila = nombre_fila_encontrada.lower()
                 
                 # Criterio: Es header si tiene keyword de sección/grupo Y NO TIENE exclusiones de datos
+                # O si es explícitamente un TOTAL (el usuario pide NO escribir en totales porque son fórmulas)
                 es_header_seccion = (any(k in norm_fila for k in KEYWORDS_SECCION) or any(k in norm_fila for k in KEYWORDS_GRUPO)) \
-                                    and not any(e in nombre_fila_encontrada.upper() for e in EXCLUDE_HEADER) \
-                                    and "total" not in norm_fila
+                                    and not any(e in nombre_fila_encontrada.upper() for e in EXCLUDE_HEADER)
                 
-                if es_header_seccion:
+                # Búsqueda de patrones de suma: (A+B), (1+2), etc.
+                tiene_patron_suma = bool(re.search(r'\(.*?\+.*?\)', nombre_fila_encontrada))
+                es_total_prohibido = any(k in norm_fila for k in KEYWORDS_PROHIBIDOS) or tiene_patron_suma
+                
+                if (es_header_seccion or es_total_prohibido) and "atención por" not in norm_fila:
                     # Buscar un "Total" o "Masculino/Femenino" inmediatamente debajo o relacionado
-                    print(f"⚠️ Redirigiendo desde encabezado '{nombre_fila_encontrada}'...")
+                    # Pero CUIDADO: Si el usuario dijo "No escribas en totales", redirigimos a los desgloses
+                    print(f"⚠️ Redirigiendo desde fila protegida '{nombre_fila_encontrada}'...")
                     
                     # Búsqueda local de un "Total" dentro del mismo bloque (próximas 8 filas)
                     nuevo_index = -1
@@ -1152,10 +1179,41 @@ with st.sidebar:
     semana_sel = st.selectbox("Semana de Carga", ["Semana 1", "Semana 2", "Semana 3", "Semana 4", "Semana 5"])
     
     if st.session_state.get('global_undo_log'):
-        if st.button("⏪ DESHACER CARGA", use_container_width=True, help="Revierte la última carga sumada o reemplazada."):
+        st.divider()
+        st.subheader("⏪ Revertir Cambios")
+        if st.button("DESHACER ÚLTIMA CARGA", use_container_width=True, help="Restaura los valores que el Excel tenía antes de tu última acción.", type="primary"):
             if deshacer_actualizacion():
                 st.success("✅ Carga revertida exitosamente.")
                 st.rerun()
+
+    # --- NUEVO: BOTÓN DE LIMPIEZA TOTAL (Para satisfacer "borrar sumatorios") ---
+    st.divider()
+    with st.expander("🗑️ Zona de Limpieza (Peligro)"):
+        st.warning("Esto borrará TODOS los números de la semana actual en la hoja seleccionada.")
+        if st.button("🔥 LIMPIAR TODO (Semana Seleccionada)", use_container_width=True):
+            try:
+                sh = client.open_by_key(SPREADSHEET_ID)
+                ws = sh.worksheet(selected_ws)
+                headers = ws.row_values(1)
+                col_to_clear = -1
+                target_w = re.sub(r'[\s\n\r]', '', semana_sel.upper())
+                for i, h in enumerate(headers):
+                    if target_w in re.sub(r'[\s\n\r]', '', str(h).upper()):
+                        col_to_clear = i + 1
+                        break
+                
+                if col_to_clear != -1:
+                    # Limpiar desde fila 2 hasta el final
+                    total_rows = len(ws.col_values(1))
+                    updates = []
+                    for r in range(2, total_rows + 1):
+                        updates.append({'range': rowcol_to_a1(r, col_to_clear), 'values': [[""]]})
+                    ws.batch_update(updates)
+                    st.success(f"🧹 Hoja '{selected_ws}' (Semana {semana_sel}) limpia.")
+                else:
+                    st.error("No se halló la columna de la semana.")
+            except Exception as e:
+                st.error(f"Error borrando: {e}")
 
     st.markdown("---")
     with st.expander("🚨 ¿Sigue el error de Quota?"):
