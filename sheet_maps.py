@@ -596,7 +596,7 @@ MAPEO DIAGNÓSTICOS MANUSCRITOS A RIESGO BIOLÓGICO:
 | Gastroenteritis, Parasitosis, Diarrea, EDA | "Enf. Infecciosas y Parasitarias" |
 | Anemia, Púrpura | "Enf. de la Sangre y Org. Hematopoyético" |
 | ITU, Vulvovaginitis, Fimosis | "Enf. Genital y Urinaria" |
-| Fractura, Quemadura, Mordedura | "Traumatismo y Envenenamientos" |
+| Fractura, Mordedura, Accidente, Trauma agudo | "Traumatismo y Envenenamientos" |
 | Diabetes, Hipotiroidismo, Talla Baja, Obesidad | "Enf. Endocrina, Nutricional y Metabólica" |
 | Conjuntivitis, Estrabismo | "Enf. del Ojo y sus Anexos" |
 | Otitis, Amigdalitis (ORL) | "Enf. del Oído y Apófisis Mastoides" |
@@ -604,7 +604,9 @@ MAPEO DIAGNÓSTICOS MANUSCRITOS A RIESGO BIOLÓGICO:
 | TDAH, Autismo, Ansiedad | "Enf. Trastorno Mental y Comportamiento" |
 | Embarazo, Parto, Puerperio | "Enf. Parto y Puerperio" |
 | S. Down, Cardiopatía congénita | "Anomalía Congénita" |
-| Reflujo, Dolor abdominal, Estreñimiento | "Enf. del Sistema Digestivo" |
+| Reflujo, Vesícula, Hernia, Eventración, Gastritis, Dolor abdominal | "Enf. del Sistema Digestivo" |
+| Litiasis, Cálculo, Prolapso, Mioma, Quiste, ITU, Vulvovaginitis | "Enf. Genital y Urinaria" |
+| Lipoma, Nevus, Quemadura, Escabiosis, Dermatitis, Chalazión | "Enf. de la Piel y Tej. Conjuntivo" |
 
 ABREVIATURAS: CNS=Control Niño Sano, DLN=Dentro Límites Normales, ITU=Infección Tracto Urinario,
 EDA=Enfermedad Diarreica Aguda, IRA=Infección Respiratoria Aguda, RN=Recién Nacido
