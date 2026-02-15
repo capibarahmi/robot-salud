@@ -110,7 +110,10 @@ Tu trabajo es recibir TEXTO con datos médicos y convertirlos en formato JSON pa
 - **PRE-ESCOLARES**: 2 a 6 años.
 - **ESCOLARES**: 7 a 11 años.
 - **ADOLESCENTES**: 12 a 18 años.
-- **ADULTOS**: 19 a 59 años (Hoja PADULTO).
+- **ADULTOS**: 19 a 59 años (Hoja PADULTO). 
+  - ⚠️ **REGLA "NORMAL POR DEFECTO"**: Para ADULTOS, si el reporte NO menciona patología nutricional (Obesidad/Déficit) o arterial (HTA), ASUME y suma en:
+    - "Normal" (Estado Nutricional)
+    - "Normal" (Tensión Arterial)
 - **ADULTO MAYOR**: 60 años en adelante.
 
 🎯 REGLA DE ORO: Usa SIEMPRE el nombre EXACTO de la lista de filas.
@@ -206,6 +209,7 @@ REGLAS DE PROCESAMIENTO:
 3. Extrae solo los valores numéricos.
 4. MUY IMPORTANTE: Estos datos ya vienen sumados y listos. NO intentes re-analizarlos, solo MAPÉALOS a los nombres de fila de la lista técnica.
 5. Si un item no está en las filas técnicas, usa el sentido común para buscar el alias más cercano o ignóralo si es un encabezado informativo.
+6. ⚠️ **REGLA "NORMAL POR DEFECTO" (Adultos)**: Si no se detallan problemas de peso o tensión, suma la cantidad de pacientes del bloque a las filas "Normal" (Nutrición) y "Normal" (Tensión Arterial).
 
 {SHEET_ROWS}
 
